@@ -139,4 +139,20 @@ crosstab. No warnings.
 
 ## Browser check
 
-Pending: controller browser check.
+Chrome, `http://localhost:8080/` served by the Docker image, window 1792 px wide, 2026-11-05.
+
+- **Preset 1 (airlines vs road, by year):** loads the query, runs it, applies the rate method. The result table shows
+  rate, lo, hi, `join_level`, `exposure_source` and `provenance` on every row (Part 121 2019: 0.00053 [0.000144,
+  0.00136]; road 2019–2023: 0.519, 0.633, 0.646, 0.67, 0.631). The log-scale plot draws the four zero-death Part 121
+  years as hollow dots at the floor with the caption "values of 0 drawn at the floor"; y ticks read 0.0001 … 0.1. The
+  cargo note is shown above the result.
+- **Preset 3 (GA by aircraft class, 2022):** the Metric select switches to `flight_hours`; rates as in the table above
+  (light_aircraft 1.24 [1.07, 1.44]).
+- **Preset 5 (heatmap):** aviation deaths by class × year; cell text is white on dark cells; no Plot warning badge.
+- **Hover:** a `vehicle_class` cell shows its vocabulary description (e.g. "Airliner: Turbofan or turbojet airplanes
+  operated under Part 121 or 129, …"); column headers show help text (e.g. `period`).
+- **Layout:** no horizontal page scroll (`scrollWidth` = window width); wide tables scroll in their own container.
+
+The first pass found four render defects (result table overflowing the page, SI tick labels such as `200m` on the log
+axis, unreadable text on dark heatmap cells, a Plot warning badge on the heatmap); they were fixed in 9115dd1 and the
+checks above were repeated on the fixed build.
