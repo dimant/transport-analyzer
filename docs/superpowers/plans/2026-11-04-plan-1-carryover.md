@@ -1,4 +1,4 @@
-# Plan 1 carry-over for plans 2–4
+# Carry-over for later plans (from plans 1 and 2)
 
 Items found during plan 1 that were deliberately deferred. Each names the plan where it should be picked up.
 
@@ -28,3 +28,28 @@ Items found during plan 1 that were deliberately deferred. Each names the plan w
   - government heavy vehicles map to `road_commercial`
   - government special-use vehicles map to regulation class `other`, and `government` ranks first for operator type
   - special-use codes 6, 11, 19, 21, 23 and 24 were ambiguous
+
+## Added after plan 2
+
+Plan 2 closed these plan-1 items: the empty-FARS-year guard, mixed granularity in rates, the `flight_hours` default, US-only rate scope, the BTS schedule question, the RawStore collision, and stuck `running` rows.
+
+### Waiting on the user
+- **Part 121 rates and cargo flights.** The Part 121 numerator includes all-cargo flights, while the denominator is passenger-miles. Of 4 occupant deaths in 2019–2023, 3 were on Atlas Air flight 3591 (DCA19MA086, `oper_pax_cargo = CARG`). Should Part 121 rates count passenger flights (`PAX`) only?
+- **`data/mappings/ntsb.csv` choices:**
+  - `AIR:TF:NUSC` maps to `business_jet`.
+  - Airplanes with engine type TS, LR, HR, NONE, UNK or blank map to `unknown`.
+  - Gyroplanes map to `helicopter`; homebuilt helicopters map to `experimental`.
+  - Part 91 with a blank purpose maps to `private`.
+  - `docs/verification/plan-2.md` Step 4 proposes additions: `AIR::121`, `AIR::129`, `091:UNK`, `AIR::091`.
+
+### Plan 3 (frontend)
+- **NTSB dates are UTC.** NTSB `occurred_on` is the UTC date, while FARS dates are local. Day-of-week and hour views must say so, or filter by source.
+- **Rates labels and cases.** `/api/rates` `join_level` and `unmatched.reason` values are listed in the README. Aviation rates by class need `groupBy=vehicle_class,regulation_class`, because GA exposure exists only under `general_aviation`.
+- **Sample key columns.** `/api/events/sample` rows lead with `source_id, source_key, vehicle_no`, so a sampled row can be linked back to its event. Samples stay stable across re-ingests.
+- **Column order.** `Dimensions.All` is a dictionary. Clients should read `columns` rather than assume a fixed column order.
+
+### Later
+- **Remaining mixed-granularity gap.** The guard only recognises a child that was matched exactly. A sibling that reaches that child by dropping a dimension to null is not caught. No current data can trigger this; it becomes reachable only if highway exposure gains regulation-class rows.
+- **Memory after NTSB ingest.** The app holds about 694 MiB after an NTSB ingest, because CsvStager buffers each whole table and the GC then keeps the heap. Fix by streaming the decode, or set `DOTNET_GCConserveMemory`.
+- **NTSB Enterprise API.** The MDB download moves to the NTSB Enterprise API on 2027-04-05. Swap the adapter behind `IMdbExporter` and `NtsbAdapter.FetchAsync` before then.
+- **Temp-directory sweep.** The startup sweep of `ta-ntsb-*` temp directories assumes a single app instance per host.
