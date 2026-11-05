@@ -138,15 +138,17 @@ public class BtsNtsTableAdapterTests(PostgresFixture db) : IDisposable
 
     // ---- drop folder + database ----
 
-    private BtsNtsTableAdapter Adapter()
+    private const string MappingCsv =
+        "row_label,mode,vehicle_class,regulation_class,provenance\n" +
+        "\"Air carrier, domestic, all services\",aviation,,part_121,measured\n" +
+        "\"Light duty vehicle, short wheel base\",highway,light_duty,,survey_estimate\n" +
+        "\"Light duty vehicle, long wheel base\",highway,light_duty,,survey_estimate\n" +
+        "Motorcycle,highway,motorcycle,,survey_estimate\n";
+
+    private BtsNtsTableAdapter Adapter(string mappingCsv = MappingCsv)
     {
         var mappings = Directory.CreateDirectory(Path.Combine(_tmp, "data", "mappings"));
-        File.WriteAllText(Path.Combine(mappings.FullName, "bts-test-pm.csv"),
-            "row_label,mode,vehicle_class,regulation_class,provenance\n" +
-            "\"Air carrier, domestic, all services\",aviation,,part_121,measured\n" +
-            "\"Light duty vehicle, short wheel base\",highway,light_duty,,survey_estimate\n" +
-            "\"Light duty vehicle, long wheel base\",highway,light_duty,,survey_estimate\n" +
-            "Motorcycle,highway,motorcycle,,survey_estimate\n");
+        File.WriteAllText(Path.Combine(mappings.FullName, "bts-test-pm.csv"), mappingCsv);
         var o = BtsTableOptions.PassengerMiles();
         o.SourceId = SourceId;
         o.MappingFile = "bts-test-pm.csv";
@@ -202,6 +204,35 @@ public class BtsNtsTableAdapterTests(PostgresFixture db) : IDisposable
             $"select value from exposure where source_id = '{SourceId}' and vehicle_class = 'light_duty' and year = 2020"))[0][0]);
         // staging is replaced, not appended
         Assert.Equal(24L, (await QueryAsync("select count(*) from stg_bts.bts_test_pm"))[0][0]);
+    }
+
+    [Fact]
+    public async Task Ingest_RemapCorrection_RemovesRowsTheRunNoLongerProduces()
+    {
+        Drop("t.xlsx", Workbook());
+        await RunAsync(Adapter());
+        Assert.Equal(5L, (await QueryAsync($"select count(*) from exposure where source_id = '{SourceId}' and vehicle_class = 'motorcycle'"))[0][0]);
+
+        // Mapping correction: the Motorcycle row now maps to another vehicle class.
+        var run = await RunAsync(Adapter(MappingCsv.Replace("Motorcycle,highway,motorcycle,", "Motorcycle,highway,moped,")));
+        Assert.Equal("succeeded", (await QueryAsync($"select status from ingest_run where ingest_run_id = '{run}'"))[0][0]);
+        Assert.Equal(0L, (await QueryAsync($"select count(*) from exposure where source_id = '{SourceId}' and vehicle_class = 'motorcycle'"))[0][0]);
+        Assert.Equal(5L, (await QueryAsync($"select count(*) from exposure where source_id = '{SourceId}' and vehicle_class = 'moped'"))[0][0]);
+        Assert.Equal(0L, (await QueryAsync($"select count(*) from exposure where source_id = '{SourceId}' and ingest_run_id <> '{run}'"))[0][0]);
+    }
+
+    [Fact]
+    public async Task Ingest_WithYears_RemovesOnlyStaleRowsOfThoseYears()
+    {
+        Drop("t.xlsx", Workbook());
+        await RunAsync(Adapter());
+        var adapter = Adapter(MappingCsv.Replace("Motorcycle,highway,motorcycle,", "Motorcycle,highway,moped,"));
+        await new IngestRunner(db.ConnectionString, new RawStore(Path.Combine(_tmp, "raw-" + Guid.NewGuid().ToString("N"))))
+            .RunAsync(adapter, new IngestParameters([2022]), CancellationToken.None);
+        var motorcycleYears = await QueryAsync($"select year from exposure where source_id = '{SourceId}' and vehicle_class = 'motorcycle' order by year");
+        Assert.Equal([2019, 2020, 2021, 2023], motorcycleYears.Select(r => (int)r[0]));
+        var mopedYears = await QueryAsync($"select year from exposure where source_id = '{SourceId}' and vehicle_class = 'moped'");
+        Assert.Equal([2022], mopedYears.Select(r => (int)r[0]));
     }
 
     [Fact]

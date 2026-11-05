@@ -11,8 +11,8 @@ namespace TransportAnalyzer.Ingestion.Bts;
 
 /// <summary>One BTS National Transportation Statistics xlsx table (years across, one row label per series),
 /// downloaded by hand into the drop folder. Every numeric cell is staged to <c>stg_bts.{table}</c>; normalize
-/// maps row labels to exposure keys with the mapping file, sums rows that share a key, scales units and upserts
-/// <c>exposure</c>.</summary>
+/// maps row labels to exposure keys with the mapping file, sums rows that share a key, scales units and replaces
+/// the source's <c>exposure</c> rows for the run's years.</summary>
 public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoot) : ISourceAdapter
 {
     private const string StagingSchema = "stg_bts";
@@ -76,6 +76,17 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
         var years = p.Years is { Count: > 0 } ? p.Years.ToHashSet() : null;
         var (aggregated, partials) = Aggregate(cells, map, o.Metric, o.UnitMultiplier);
         var rows = aggregated.Where(r => years is null || years.Contains(r.Year)).ToList();
+
+        // The run's rows replace the source's rows for the years it covers: a key dropped by a mapping correction,
+        // the partial-sum guard or a new edition must not linger. Runs inside the runner's transaction.
+        await using (var del = new NpgsqlCommand(
+            "delete from exposure where source_id = @src and (@years::int[] is null or year = any(@years))", conn))
+        {
+            del.Parameters.AddWithValue("src", o.SourceId);
+            del.Parameters.Add(new NpgsqlParameter("years", NpgsqlDbType.Array | NpgsqlDbType.Integer)
+                { Value = (object?)years?.ToArray() ?? DBNull.Value });
+            await del.ExecuteNonQueryAsync(ct);
+        }
 
         var written = 0L;
         foreach (var row in rows)
