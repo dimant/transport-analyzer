@@ -6,3 +6,5 @@
 docs/
 tests/
 data/inbox
+**/node_modules/
+src/TransportAnalyzer.Api/wwwroot/

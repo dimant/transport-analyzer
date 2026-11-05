@@ -10,3 +10,6 @@ data/inbox/**
 !data/inbox/
 !data/inbox/**/
 !data/inbox/**/.gitkeep
+
+web/node_modules/
+src/TransportAnalyzer.Api/wwwroot/

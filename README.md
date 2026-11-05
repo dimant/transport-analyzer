@@ -186,6 +186,16 @@ and every aviation class ends up in `unmatched`. With `groupBy=regulation_class`
 (`part_91`, `part_135`, `part_137`, `part_133`); Part 121 and scheduled Part 135 have no flight hours. For Part 121
 against road travel, use `metric=passenger_miles&groupBy=regulation_class`.
 
+## Frontend
+
+The browser UI lives in `web/` (Vite + Svelte 5 + TypeScript).
+
+    cd web && npm ci && npm run dev    # dev server; needs the API on localhost:8080
+    npm test                           # unit tests
+    npm run build                      # writes into src/TransportAnalyzer.Api/wwwroot
+
+`wwwroot/` is generated and not committed. `docker compose up -d --build` builds the frontend automatically.
+
 ## Tests
 
 ```sh
