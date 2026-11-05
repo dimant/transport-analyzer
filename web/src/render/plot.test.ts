@@ -40,4 +40,34 @@ describe('plot', () => {
     expect(el.querySelectorAll('[aria-label="dot"] circle').length).toBe(1)
     expect(el.textContent).toContain('1 row without a rate (no exposure)')
   })
+  it('intervals_logScale_yTicksArePlainDecimals', () => {
+    const el = renderPlot(iv([['2018', 0.0002, 0.0001, 0.0005], ['2019', 0.3, 0.1, 0.6]]), { width: 400 })
+    const ticks = [...el.querySelectorAll('[aria-label="y-axis tick label"] text')].map((t) => t.textContent ?? '')
+    expect(ticks.length).toBeGreaterThan(0)
+    for (const t of ticks) {
+      expect(t).not.toMatch(/[mµ]$/)
+      expect(Number.isNaN(Number(t.replace(/,/g, '')))).toBe(false)
+    }
+  })
+  it('heatmap_textContrastsWithCell', () => {
+    const el = renderPlot(heat, { width: 400 })
+    const texts = [...el.querySelectorAll('[aria-label="text"] text')]
+    const fillOf = (s: string) => texts.find((t) => t.firstChild?.textContent === s)!.getAttribute('fill') ?? ''
+    expect(fillOf('100')).toBe('white')
+    expect(fillOf('1')).not.toBe('white')
+  })
+  it('plots_yearLikeCategories_emitNoWarning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const years = ['2019', '2020', '2021', '2022', '2023']
+    const h: HeatmapSpec = {
+      ...heat, x: 'year', y: 'b', logScale: false,
+      data: years.map((year, i) => ({ year, b: 'u', value: i + 1 })),
+    }
+    const el = renderPlot(h, { width: 400 })
+    const el2 = renderPlot(iv(years.map((y) => [y, 0.5, 0.4, 0.6])), { width: 400 })
+    expect(warn).not.toHaveBeenCalled()
+    expect(el.textContent).not.toContain('warning')
+    expect(el2.textContent).not.toContain('warning')
+    warn.mockRestore()
+  })
 })

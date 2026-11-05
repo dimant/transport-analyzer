@@ -30,16 +30,26 @@ function heatmap(spec: HeatmapSpec, width: number): Element {
   }
   const title = (d: Row) => `${label(d[spec.x])} / ${label(d[spec.y])}: ${formatValue(val(d), 'number')}`
   const text = (d: Row) => formatValue(val(d), 'number')
+  const usableValues = spec.data.filter(usable).map((d) => val(d)!)
+  const scaled = (v: number) => (spec.logScale ? Math.log(v) : v)
+  const lo = usableValues.length ? scaled(Math.min(...usableValues)) : 0
+  const hi = usableValues.length ? scaled(Math.max(...usableValues)) : 0
+  // the blues ramp darkens with value: light text on the upper part, dark text elsewhere
+  const textFill = (d: Row) => {
+    const v = val(d)
+    if (v === null || !usable(d) || hi === lo) return 'black'
+    return (scaled(v) - lo) / (hi - lo) > 0.5 ? 'white' : 'black'
+  }
   const build = (legend: boolean) => Plot.plot({
     width,
     marginLeft: 100,
-    x: { label: spec.x },
-    y: { label: spec.y },
+    x: { type: 'band', label: spec.x },
+    y: { type: 'band', label: spec.y },
     color: { type: spec.logScale ? 'log' : 'linear', legend, label: spec.fillLabel, scheme: 'blues' },
     marks: [
       Plot.cell(spec.data.filter((d) => !usable(d)), { x: spec.x, y: spec.y, fill: '#d0d0d0', title }),
       Plot.cell(spec.data.filter(usable), { x: spec.x, y: spec.y, fill: (d: Row) => val(d), title }),
-      Plot.text(spec.data, { x: spec.x, y: spec.y, text, title, fontSize: 11 }),
+      Plot.text(spec.data, { x: spec.x, y: spec.y, text, title, fontSize: 11, fill: textFill }),
     ],
   })
   let plot: Element
@@ -84,7 +94,13 @@ function intervals(spec: IntervalSpec, width: number): Element {
   const plot = Plot.plot({
     width,
     x: { type: 'point', label: spec.x },
-    y: { type: spec.logScale ? 'log' : 'linear', label: spec.yLabel, grid: true },
+    y: {
+      type: spec.logScale ? 'log' : 'linear',
+      label: spec.yLabel,
+      grid: true,
+      ticks: 6,
+      tickFormat: (v: number) => formatValue(v, 'rate'),
+    },
     color: { legend: Boolean(spec.series) },
     marks: [
       Plot.ruleX(rows, { x, y1: (d: Row) => clamp(num(d[spec.lo])), y2: (d: Row) => clamp(num(d[spec.hi])), stroke: color, title }),

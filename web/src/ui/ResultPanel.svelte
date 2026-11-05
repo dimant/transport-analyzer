@@ -67,7 +67,7 @@
     {/each}
     {#each outcome.specs as spec, i (i)}
       {#if spec.kind === 'table'}
-        <TableView {spec} {glossary} />
+        <div class="scroll"><TableView {spec} {glossary} /></div>
       {:else}
         <div class="plot" use:plot={spec}></div>
       {/if}
@@ -93,6 +93,10 @@
     flex-direction: column;
     gap: 0.75rem;
     min-width: 0;
+  }
+  .scroll {
+    overflow-x: auto;
+    max-width: 100%;
   }
   .plot {
     overflow-x: auto;
