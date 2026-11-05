@@ -10,6 +10,7 @@ vehicle_class,turboprop,Turboprop,"Turboprop as a shared vehicle class value.",
 vehicle_class,business_jet,Business jet,"Business jet as a shared vehicle class value.",
 vehicle_class,airliner,Airliner,"Airliner as a shared vehicle class value.",
 vehicle_class,helicopter,Helicopter,"Helicopter as a shared vehicle class value.",
+vehicle_class,experimental,Experimental,"Amateur-built and other experimental-certificate aircraft.",
 vehicle_class,other,Other,"Other as a shared vehicle class value.",
 vehicle_class,unknown,Unknown,"Unknown as a shared vehicle class value.",
 operator_type,private,Private,"Private as a shared operator type value.",
@@ -18,10 +19,13 @@ operator_type,government,Government,"Government as a shared operator type value.
 operator_type,unknown,Unknown,"Unknown as a shared operator type value.",
 regulation_class,road_private,Road private,"Road private as a shared regulation class value.",
 regulation_class,road_commercial,Road commercial,"Road commercial as a shared regulation class value.",
-regulation_class,part_91,Part 91,"Part 91 as a shared regulation class value.",
+regulation_class,general_aviation,General aviation,"Part 91, on-demand Part 135, Part 137 and Part 133 flying together, as the FAA General Aviation and Part 135 Activity Survey counts them.",
+regulation_class,part_91,Part 91,"General operating and flight rules, covering private and corporate flying.",general_aviation
 regulation_class,part_121,Part 121,"Part 121 as a shared regulation class value.",
-regulation_class,part_135,Part 135,"Part 135 as a shared regulation class value.",
-regulation_class,part_137,Part 137,"Part 137 as a shared regulation class value.",
+regulation_class,part_135,Part 135,"On-demand commuter and air taxi operations, counted within general aviation.",general_aviation
+regulation_class,part_135_scheduled,Part 135 scheduled,"Scheduled commuter operations under Part 135, which the FAA survey does not cover.",
+regulation_class,part_137,Part 137,"Agricultural aircraft operations such as crop dusting.",general_aviation
+regulation_class,part_133,Part 133,"Rotorcraft external-load operations.",general_aviation
 regulation_class,other,Other,"Other as a shared regulation class value.",
 regulation_class,unknown,Unknown,"Unknown as a shared regulation class value.",
 maintenance_regime,none,None,"None as a shared maintenance regime value.",

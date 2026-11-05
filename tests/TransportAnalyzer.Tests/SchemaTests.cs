@@ -32,6 +32,31 @@ public class SchemaTests(PostgresFixture db)
         Assert.Equal("light_duty", (string?)await cmd.ExecuteScalarAsync());
     }
 
+    [Theory]
+    [InlineData("part_91", "general_aviation")]
+    [InlineData("part_135", "general_aviation")]
+    [InlineData("part_137", "general_aviation")]
+    [InlineData("part_133", "general_aviation")]
+    [InlineData("part_135_scheduled", null)]
+    [InlineData("general_aviation", null)]
+    public async Task Vocabulary_RegulationClassParents(string code, string? parent)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = new NpgsqlCommand("SELECT parent_code FROM vocabulary WHERE attribute='regulation_class' AND code=$1", conn);
+        cmd.Parameters.AddWithValue(code);
+        var v = await cmd.ExecuteScalarAsync();
+        Assert.NotNull(v);
+        Assert.Equal(parent, v is DBNull ? null : (string)v);
+    }
+
+    [Fact]
+    public async Task Vocabulary_ExperimentalVehicleClassExists()
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = new NpgsqlCommand("SELECT count(*) FROM vocabulary WHERE attribute='vehicle_class' AND code='experimental'", conn);
+        Assert.Equal(1L, (long)(await cmd.ExecuteScalarAsync())!);
+    }
+
     [Fact]
     public async Task Exposure_NullKeysAreNotDistinct()
     {
