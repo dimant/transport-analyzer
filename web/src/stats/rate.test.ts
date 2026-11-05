@@ -136,3 +136,21 @@ describe('rate', () => {
     expect([1e3, 1e5, 1e6, 1e8, 1e9, 250].map(formatPer)).toEqual(['1k', '100k', '1M', '100M', '1B', '250'])
   })
 })
+
+describe('rate.defaultBindings', () => {
+  it('rate_defaultBindings_seedsNumeratorDenominatorAndCarry', () => {
+    expect(rate.defaultBindings!(mk([]))).toEqual({
+      numerator: 'numerator', denominator: 'denominator', carry: ['join_level', 'exposure_source', 'provenance'],
+    })
+  })
+
+  it('rate_defaultBindings_omitsMissingColumns', () => {
+    const t = fromRows(['mode', 'exposure_source', 'n'], [], { n: 'count' })
+    expect(rate.defaultBindings!(t)).toEqual({ carry: ['exposure_source'] })
+  })
+
+  it('rate_defaultBindings_wrongTypeIsSkipped', () => {
+    const t = fromRows(['numerator', 'denominator'], [], {})
+    expect(rate.defaultBindings!(t)).toEqual({})
+  })
+})

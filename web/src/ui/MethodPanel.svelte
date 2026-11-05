@@ -21,7 +21,7 @@
 
   function changeMethod(id: string) {
     const m = methodById(id)
-    if (m) onchange({ methodId: id, bindings: {}, params: defaultParams(m) })
+    if (m) onchange({ methodId: id, bindings: m.defaultBindings?.(table) ?? {}, params: defaultParams(m) })
   }
   function bind(key: string, value: string | string[] | undefined) {
     const next: Bindings = { ...bindings }
@@ -104,7 +104,7 @@
 
   {#if messages.length > 0}
     <ul class="messages" role="alert">
-      {#each messages as m (m)}
+      {#each messages as m, i (i)}
         <li>{m}</li>
       {/each}
     </ul>

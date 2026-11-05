@@ -41,6 +41,8 @@ export interface Method<P extends Record<string, unknown> = Record<string, unkno
   inputs: InputSpec[]
   params: ParamSpec[]
   // method syntax keeps parameter bivariance so any Method<P, R> is assignable to Method
+  // optional starting bindings for a table; keeps method-specific column conventions out of the UI
+  defaultBindings?(table: Table): Bindings
   run(table: Table, bindings: Bindings, params: P): R
   render(result: R): RenderSpec[]
 }

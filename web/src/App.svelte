@@ -56,6 +56,7 @@
       if (mine !== token) return false
       result = r
       methodRun = null
+      if (Object.keys(bindings).length === 0) bindings = methodById(methodId)?.defaultBindings?.(r.table) ?? {}
       return true
     } catch (e) {
       if (mine !== token) return false
@@ -71,8 +72,16 @@
     if (result && method) methodRun = { method, table: result.table, bindings, params }
   }
 
+  function runManual(q: Query) {
+    note = undefined
+    return run(q)
+  }
+
   function changeMethod(c: MethodChange) {
-    if (c.methodId !== methodId) methodRun = null
+    if (c.methodId !== methodId) {
+      methodRun = null
+      note = undefined
+    }
     methodId = c.methodId
     bindings = c.bindings
     params = c.params
@@ -80,9 +89,9 @@
 
   async function loadExperiment(e: Experiment) {
     query = e.query
-    note = e.note
     loadId++
     if (!(await run(e.query))) return
+    note = e.note
     methodId = e.methodId
     bindings = e.bindings
     params = e.params
@@ -111,7 +120,7 @@
   <div class="layout">
     <div class="left">
       {#key loadId}
-        <QueryPanel {query} {vocabulary} {sources} busy={running} onrun={run} />
+        <QueryPanel {query} {vocabulary} {sources} busy={running} onrun={runManual} />
       {/key}
       {#if running}<p>Running…</p>{/if}
       {#if result}<DataPreview {result} {glossary} />{/if}

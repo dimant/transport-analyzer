@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte'
 import { describe, expect, it, vi } from 'vitest'
 import { columnType } from './api/columns'
 import type { Query, QueryResult } from './api/types'
@@ -34,7 +34,13 @@ describe('App', () => {
     expect(runQuery).toHaveBeenCalledWith(expect.objectContaining({ metric: 'flight_hours', fromYear: 2022 }))
     // the method ran with the preset's bindings and shows its note
     await waitFor(() => expect(screen.getByText(/FAA survey hours cover Part 91/)).toBeTruthy())
-    expect(screen.getAllByText('provenance').length).toBeGreaterThan(0)
+    // only a rendered rate table has a rate column, so the method ran with the preset's bindings
+    const result = within(screen.getByRole('region', { name: 'Result' }))
+    await waitFor(() => expect(result.getByRole('columnheader', { name: 'rate' })).toBeTruthy())
+    expect(result.getByRole('columnheader', { name: 'exposure_source' })).toBeTruthy()
+    expect(result.getByRole('columnheader', { name: 'provenance' })).toBeTruthy()
+    expect((screen.getByLabelText('Method') as HTMLSelectElement).value).toBe('rate')
+    expect((within(screen.getAllByRole('group', { name: 'Group by' }).at(-1)!).getByLabelText('vehicle_class') as HTMLInputElement).checked).toBe(true)
   })
 
   it('App_runInFlight_disablesRunAndIgnoresStaleResponse', async () => {
@@ -58,9 +64,44 @@ describe('App', () => {
   })
 
   it('App_failedQuery_showsErrorAndKeepsMethod', async () => {
-    const runQuery = vi.fn(async () => { throw new Error('boom') })
+    let calls = 0
+    const runQuery = vi.fn(async () => {
+      if (++calls > 1) throw new Error('boom')
+      return ratesResult()
+    })
     render(App, { api: makeApi(runQuery) })
+    await fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    await waitFor(() => expect(screen.getByLabelText('Method')).toBeTruthy())
+    await fireEvent.change(screen.getByLabelText('Method'), { target: { value: 'crosstab' } })
     await fireEvent.change(screen.getByLabelText('Preset'), { target: { value: 'Airlines vs road — 2019–2023 combined' } })
     await waitFor(() => expect(screen.getByText('boom')).toBeTruthy())
+    expect((screen.getByLabelText('Method') as HTMLSelectElement).value).toBe('crosstab')
+    expect(screen.queryByText(/Part 121 includes all-cargo/)).toBeNull()
+  })
+
+  it('App_note_clearedWhenAnalysisDiverges', async () => {
+    const runQuery = vi.fn(async () => ratesResult())
+    render(App, { api: makeApi(runQuery) })
+    await fireEvent.change(screen.getByLabelText('Preset'), { target: { value: 'Airlines vs road — 2019–2023 combined' } })
+    await waitFor(() => expect(screen.getByText(/Part 121 includes all-cargo/)).toBeTruthy())
+    await fireEvent.change(screen.getByLabelText('Method'), { target: { value: 'crosstab' } })
+    expect(screen.queryByText(/Part 121 includes all-cargo/)).toBeNull()
+    await fireEvent.change(screen.getByLabelText('Preset'), { target: { value: 'Airlines vs road — 2019–2023 combined' } })
+    await waitFor(() => expect(screen.getByText(/Part 121 includes all-cargo/)).toBeTruthy())
+    await fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    await waitFor(() => expect(screen.queryByText(/Part 121 includes all-cargo/)).toBeNull())
+  })
+
+  it('App_handRunRate_showsExposureSourceAndProvenance', async () => {
+    render(App, { api: makeApi(async () => ratesResult()) })
+    await fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    await waitFor(() => expect(screen.getByLabelText('Events (numerator)')).toBeTruthy())
+    await fireEvent.change(screen.getByLabelText('Events (numerator)'), { target: { value: 'numerator' } })
+    await fireEvent.change(screen.getByLabelText('Exposure (denominator)'), { target: { value: 'denominator' } })
+    await fireEvent.click(screen.getByRole('button', { name: 'Run method' }))
+    const result = within(screen.getByRole('region', { name: 'Result' }))
+    await waitFor(() => expect(result.getByRole('columnheader', { name: 'rate' })).toBeTruthy())
+    expect(result.getByRole('columnheader', { name: 'exposure_source' })).toBeTruthy()
+    expect(result.getByRole('columnheader', { name: 'provenance' })).toBeTruthy()
   })
 })

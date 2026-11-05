@@ -51,6 +51,16 @@ export const rate: Method<RateParams, RateResult> = {
     { key: 'confidence', label: 'Confidence', kind: 'number', default: 0.95 },
     { key: 'logScale', label: 'Log scale', kind: 'boolean', default: true },
   ],
+  defaultBindings(table: Table): Bindings {
+    const has = (name: string, type: string) => table.columns.some((c) => c.name === name && c.type === type)
+    const out: Bindings = {}
+    if (has('numerator', 'count')) out.numerator = 'numerator'
+    if (has('denominator', 'exposure')) out.denominator = 'denominator'
+    // every rate is shown with where its exposure came from
+    const carry = ['join_level', 'exposure_source', 'provenance'].filter((n) => has(n, 'categorical'))
+    if (carry.length > 0) out.carry = carry
+    return out
+  },
   run(table: Table, b: Bindings, p: RateParams): RateResult {
     const nName = b.numerator as string
     const dName = b.denominator as string

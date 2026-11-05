@@ -62,7 +62,7 @@
   {#if note}<p class="note">{note}</p>{/if}
   {#if outcome}
     {#if outcome.error}<div class="banner" role="alert">{outcome.error}</div>{/if}
-    {#each outcome.warnings as w (w)}
+    {#each outcome.warnings as w, i (i)}
       <p class="warning">{w}</p>
     {/each}
     {#each outcome.specs as spec, i (i)}
