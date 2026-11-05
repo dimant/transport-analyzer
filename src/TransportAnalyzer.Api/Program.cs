@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using TransportAnalyzer.Api.Endpoints;
 using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
 using TransportAnalyzer.Ingestion;
+using TransportAnalyzer.Ingestion.Fars;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,12 @@ if (!string.IsNullOrWhiteSpace(connectionString))
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<IngestRunner>()));
     builder.Services.AddSingleton<IngestQueue>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<IngestQueue>());
+
+    builder.Services.Configure<FarsOptions>(builder.Configuration.GetSection("Sources:fars"));
+    builder.Services.AddHttpClient(nameof(FarsAdapter), c => c.Timeout = TimeSpan.FromMinutes(10));
+    builder.Services.AddSingleton<ISourceAdapter>(sp => new FarsAdapter(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(FarsAdapter)),
+        sp.GetRequiredService<IOptions<FarsOptions>>()));
 }
 
 var app = builder.Build();
