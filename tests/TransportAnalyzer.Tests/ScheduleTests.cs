@@ -1,4 +1,8 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using Quartz;
 using Microsoft.Extensions.Logging.Abstractions;
 using TransportAnalyzer.Api.Scheduling;
 using TransportAnalyzer.Domain;
@@ -64,5 +68,51 @@ public class ScheduleTests(PostgresFixture db)
         var queue = new IngestQueue(runner, [], NullLogger<IngestQueue>.Instance);
         var outcome = await new IngestJob(queue, NullLogger<IngestJob>.Instance).RunAsync("fars");
         Assert.Equal(IngestJobOutcome.Failed, outcome);
+    }
+
+    private sealed class NoopAdapter(string id) : ISourceAdapter
+    {
+        public SourceDescriptor Descriptor { get; } = new(id, "Noop", "batch", "events", "", "", "");
+        public Task<IReadOnlyList<RawFile>> FetchAsync(IRawStore raw, IngestParameters p, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<RawFile>>([]);
+        public Task StageAsync(IReadOnlyList<RawFile> files, NpgsqlConnection conn, IngestParameters p, CancellationToken ct) => Task.CompletedTask;
+        public Task<NormalizeResult> NormalizeAsync(NpgsqlConnection conn, Guid runId, IngestParameters p, CancellationToken ct)
+            => Task.FromResult(new NormalizeResult(new Dictionary<string, long>(), new Dictionary<string, long>()));
+    }
+
+    private async Task<string?> RunStatusAsync(string sourceId)
+    {
+        await using var conn = new NpgsqlConnection(db.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "select status from ingest_run where source_id = @s order by started_at desc limit 1", conn);
+        cmd.Parameters.AddWithValue("s", sourceId);
+        return await cmd.ExecuteScalarAsync() as string;
+    }
+
+    [Fact]
+    public async Task Host_WithSchedule_TriggerFiresIngestRun_UtcAndMisfireDoNothing()
+    {
+        var sourceId = "sched-" + Guid.NewGuid().ToString("N");
+        await using var baseFactory = new ApiFactory(db, null, new NoopAdapter(sourceId));
+        await using var factory = baseFactory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Scheduling:Enabled", "true");
+            b.UseSetting($"Sources:{sourceId}:Schedule", "0 0 3 1 1 ? 2099"); // far future: only the manual trigger fires
+        });
+        var scheduler = await factory.Services.GetRequiredService<ISchedulerFactory>().GetScheduler();
+
+        var trigger = Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(new TriggerKey("ingest-" + sourceId)));
+        Assert.Equal(TimeZoneInfo.Utc.Id, trigger.TimeZone.Id);
+        Assert.Equal((int)CronTriggerMisfireInstruction.DoNothing, trigger.MisfireInstructionCode);
+        Assert.Null(await RunStatusAsync(sourceId));
+
+        await scheduler.TriggerJob(new JobKey("ingest-" + sourceId));
+
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        string? status;
+        while ((status = await RunStatusAsync(sourceId)) is null or "running" && DateTime.UtcNow < deadline)
+            await Task.Delay(100);
+        Assert.Equal("succeeded", status);
     }
 }
