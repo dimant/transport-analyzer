@@ -54,7 +54,7 @@ find a new edition by itself. When the FAA publishes a new survey year on
 https://www.faa.gov/data_research/aviation_data_statistics/general_aviation, copy the link of its chapter 1 xlsx
 (`...GASurveyCh1....xlsx`) into `Sources:faa-ga-survey:Url` in `src/TransportAnalyzer.Api/appsettings.json` and rebuild
 (`docker compose up -d --build`), or set `Sources__faa-ga-survey__Url` in the `app` service's `environment` in
-`docker-compose.yml`. Then ingest `faa-ga-survey` again. One edition covers twelve survey years (the CY2024 edition: 2013–2024).
+`docker-compose.yml`. Then ingest `faa-ga-survey` again. The CY2024 edition's Tables 1.3 and 1.4 cover 2013–2024.
 
 ## Ingest
 

@@ -34,8 +34,8 @@ Notes:
 - NTSB raw file: `avall.zip`, sha256 `c1a447835b41104737f8c3fcf6b2bbaa4b6a00f506fe7668b528d3b3a2f78bbc`. All 20 tables
   of the MDB are staged in `stg_ntsb` (e.g. events 31,453, aircraft 32,010, injury 182,616, narratives 28,671,
   flight_time 415,295, dt_aircraft 273,196 rows).
-- App container memory during the NTSB run, `docker stats --no-stream` every ~4 s (97 samples): 344.5 MiB at the
-  first sample, 686.1 MiB 13 s in, then flat at 686–694 MiB; **peak sampled 694.4 MiB** of a 7.653 GiB limit. A spike
+- App container memory during the NTSB run, `docker stats --no-stream` every ~4 s (97 samples; run started
+  15:50:52): 344.5 MiB at 15:50:57, 167.9 MiB at 15:51:01, 686.1 MiB at 15:51:06, then flat at 686–694 MiB; **peak sampled 694.4 MiB** of a 7.653 GiB limit. A spike
   shorter than the sampling interval would not be seen. App CPU was 0.00–1.68% from 15:51:10 to the end at 15:57:43,
   so almost all of the 410 s was spent waiting on the database. The app still used 694 MiB after the run finished.
 - FAA run `unmapped`: `exposure:row_label=Special Light-sport: 1` (same as the earlier run).
@@ -72,6 +72,11 @@ Other API measures (serious / minor / unattributed fatalities): 2019 257 / 358 /
 Σ `unattributed_fatalities` over all NTSB events is 1 (ground fatalities go to the aircraft when an event has exactly
 one aircraft).
 
+**Recent years are provisional.** The `ntsb` source's own caveat (`/api/sources`): "Final reports take 12–24 months, so
+recent years are incomplete and revised." This check compares the API with the snapshot it was loaded from (avall.zip
+of 2026-11-01), so it holds regardless; but the 2022–2023 counts, and their fatalities, can still change in later
+snapshots.
+
 ## Step 4: Unknowns (R-T9c)
 
 `unknown:*` counts of the NTSB run are in Step 2. The run has 70 `unmapped` keys, 6,613 values in total. Keys above 50:
@@ -105,9 +110,12 @@ all of it comes from the explicit `:%` and `UNK:%` rules.
 `GET /api/exposure?metric=flight_hours&sourceId=faa-ga-survey&fromYear=2019&toYear=2023`: 55 rows, 11 per year, all
 `mode=aviation`. Hours as returned (float noise such as `20582500.999999996` rounded here).
 
-| Year | general_aviation total | part_91 | part_135 | part_137 | part_133 |
+Provenance as returned: general_aviation total and part_135 `survey_estimate`; part_91, part_137 and part_133
+`derived` (computed from Table 1.4 use rows), in every year. Only the general_aviation total has a standard error.
+
+| Year | general_aviation total (survey_estimate) | part_91 (derived) | part_135 (survey_estimate) | part_137 (derived) | part_133 (derived) |
 |---|---|---|---|---|---|
-| 2019 | 25,565,930 (SE 255,659.3) | 20,582,501 (derived) | 3,765,242 | 1,060,163 (derived) | 158,025 (derived) |
+| 2019 | 25,565,930 (SE 255,659.3) | 20,582,501 | 3,765,242 | 1,060,163 | 158,025 |
 | 2020 | 22,491,871 (SE 247,410.581) | 18,293,860 | 3,037,404 | 1,029,392 | 131,215 |
 | 2021 | 26,440,574 (SE 290,846.314) | 20,689,616 | 4,474,791 | 1,120,395 | 155,772 |
 | 2022 | 26,953,420 (SE 296,487.62) | 21,355,713 | 4,410,422 | 1,018,417 | 168,869 |
@@ -130,10 +138,24 @@ Vehicle classes under `general_aviation` (`survey_estimate`):
 | part_91 + part_135 + part_137 + part_133 = general_aviation total | equal | equal in 2020, 2021, 2023; 1 hour over in 2019 (25,565,931 vs 25,565,930) and 2022 (26,953,421 vs 26,953,420), from rounding in the derived Parts | pass |
 
 The six classes sum to less than the total: 2019 25,377,121 of 25,565,930 (188,809 short), 2020 201,617 short,
-2021 245,156, 2022 231,068, 2023 354,744. That gap is the survey rows not mapped to a class (e.g. Special Light-sport,
-reported as unmapped by the run).
+2021 245,156, 2022 231,068, 2023 354,744. The gap is the Table 1.3 row "Special Light-sport", which the mapping
+leaves `unmapped` (the run reports it). Staged Table 1.3 (thousand hours): All Aircraft − the seven mapped rows =
+Special Light-sport in every year, within 0.002 thousand hours (rounding of the source cells):
+
+| Year | All Aircraft | Σ mapped rows (Piston, Turboprop, Turbojet, Rotorcraft, Experimental, Gliders, Lighter-than-air) | Special Light-sport | Gap in Step 5 (hours) |
+|---|---|---|---|---|
+| 2019 | 25,565.930 | 25,377.121 | 188.808 | 188,809 |
+| 2020 | 22,491.871 | 22,290.254 | 201.615 | 201,617 |
+| 2021 | 26,440.574 | 26,195.418 | 245.156 | 245,156 |
+| 2022 | 26,953.420 | 26,722.352 | 231.068 | 231,068 |
+| 2023 | 28,562.708 | 28,207.964 | 354.745 | 354,744 |
 
 ## Step 6: The first question (R-T9d)
+
+Scope notes for every number in this step: `/api/rates` counts US events only. The `passenger_miles` denominator for
+`part_121` is BTS "U.S. air carrier, certificated, domestic, all services", i.e. domestic passenger-miles only. NTSB
+final reports take 12–24 months, so the 2022–2023 numerators are provisional. GA rates use the FAA calendar-year survey
+estimate as denominator.
 
 ### Part 121 against road travel, per 100M passenger-miles
 
@@ -159,10 +181,29 @@ returned with fractions (e.g. `5579125972271.872`) and are rounded here.
 2019–2023 combined: Part 121 4 / 3,116,353,436,693 = 0.000128 per 100M passenger-miles; highway 160,473 /
 25,967,934,919,708 = 0.6180. Road occupants died at about 4,815 times the Part 121 rate per passenger-mile.
 
-The four Part 121 deaths (2019): Atlas Air 3591, Boeing 767, 2019-02-23 (DCA19MA086), 3 occupants; Peninsula Aviation
-Services (PenAir) Saab 2000, 2019-10-18 (DCA20MA002), 1 occupant. The only other fatal US Part 121 aircraft in
-2019–2023 is the Envoy Air ERJ 170 of 2022-12-31 (DCA23LA109), with 1 nonoccupant (ground) fatality, which
-`occupant_fatalities` does not count.
+> **Read this ratio with these caveats.**
+> - **Four deaths in five years.** The Part 121 numerator is 4 (all in 2019) and 0 in 2020–2023. One more or one fewer
+>   crash moves the five-year rate by 25% or more; the yearly rates are not stable.
+> - **Three of the four are cargo crew.** The staged NTSB record of the Atlas Air crash (DCA19MA086, 3 deaths) has
+>   `oper_pax_cargo` = `CARG`, `oper_sched` = `NSCH`; its narrative says "Part 121 domestic cargo flight". The
+>   denominator counts passenger-miles only. Only 1 of the 4 deaths (Peninsula AviationServices Inc., DBA PenAir,
+>   DCA20MA002, `PAX` / `SCHD`) was on a passenger flight. The rate definition was not changed here.
+> - **The denominator is domestic only.** The BTS row mapped to `part_121` is "U.S. air carrier, certificated,
+>   domestic, all services"; the numerator is every US-located Part 121 accident.
+> - **NTSB lag.** Final reports take 12–24 months (source caveat), so 2022–2023 can still be revised.
+
+What the staged NTSB data say about each US Part 121 aircraft with a fatality, 2019–2023 (`stg_ntsb.aircraft`,
+`stg_ntsb.events`, `stg_ntsb.injury`; no flight-number column exists, the flight numbers are from `narratives`):
+
+| ntsb_no | `oper_name` (`oper_dba`) | Aircraft | `oper_pax_cargo` | `oper_sched` | `oper_dom_int` | Fatalities (FATL injury rows; event `inj_tot_f` / `inj_f_grnd`) | Narrative |
+|---|---|---|---|---|---|---|---|
+| DCA19MA086 | Atlas Air (blank) | Boeing 767 | CARG | NSCH | DOM | 3 occupants; 3 / blank | "flight 3591"; "Part 121 domestic cargo flight for Amazon" |
+| DCA20MA002 | Peninsula AviationServices Inc., (PenAir) | Saab 2000 | PAX | SCHD | DOM | 1 occupant; 1 / blank | "PenAir flight 3296" |
+| DCA23LA109 | Envoy Air Inc. (American Eagle) | EMBRAER S A ERJ 170-200 LR | PAX | SCHD | DOM | 0 occupants (no FATL rows); 0 / 1 ground | "Envoy Air flight 3408" |
+
+`type_fly` is blank for all three. The ground fatality of DCA23LA109 is a nonoccupant, which `occupant_fatalities`
+does not count. `occurred_on` follows `ev_date`: DCA20MA002 is 2019-10-18 in the data, while its narrative says
+"October 17, 2019, about 1740 Alaska daylight time".
 
 `unmatched` (all `reason: no_exposure`, all aviation; `vehicleClass` null):
 
@@ -279,6 +320,8 @@ https://www.faa.gov/newsroom/general-aviation-safety, fetched with plain curl, H
 rates and numbers". It gives **fiscal** years (October to September). NTSB's own calendar-year GA rate tables
 (ntsb.gov/safety/data, table10.aspx) stop at 2011 and could not be used.
 
+The pass threshold is the plan-1 convention for published comparisons (within 20%, plan-1.md Step 6).
+
 | Year | Our fatal GA accidents (calendar year) | Our rate per 100k hours | FAA FY rate | FAA FY fatal accidents | Rate difference | Result (within 20%) |
 |---|---|---|---|---|---|---|
 | 2019 | 215 + 11 + 6 + 2 = 234 | 0.915 | FY19 0.95 | 243 | −3.7% | pass |
@@ -303,7 +346,8 @@ counting rules were not retrieved).
    identical (first row Montana 2019-11-06, then Wyoming 2019-08-14). With the monthly FARS and NTSB schedules, a
    seed's sample changes every month even when the data do not. A stable key (e.g. source id + source key + vehicle
    number) would fix it, but changes the planned ordering, so it was not changed here. The README states the limit.
-2. **Part 121 numerator includes cargo.** Atlas Air 3591 (3 of the 4 Part 121 deaths) was an all-cargo flight, while the
-   BTS denominator is passenger-miles (domestic, per the plan-1 carry-over). Also a carry-over item for plan 3.
+2. **Part 121 numerator includes cargo.** 3 of the 4 Part 121 occupant deaths are from DCA19MA086 (Atlas Air,
+   `oper_pax_cargo` = `CARG`, narrative "Part 121 domestic cargo flight"), while the BTS denominator is domestic
+   passenger-miles. The user decides separately whether Part 121 rates should exclude cargo.
 3. **App memory after NTSB.** The app container stayed at about 694 MiB after the run finished (57.5 MiB before the
    FARS run). Not a failure, but the monthly NTSB run will hold that memory on the user's machine.
