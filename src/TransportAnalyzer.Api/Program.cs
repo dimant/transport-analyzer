@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Quartz;
 using TransportAnalyzer.Api.Endpoints;
+using TransportAnalyzer.Api.Scheduling;
 using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
 using TransportAnalyzer.Ingestion;
@@ -57,6 +59,14 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddSingleton<ISourceAdapter>(sp => new FaaGaSurveyAdapter(
         sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(FaaGaSurveyAdapter)),
         sp.GetRequiredService<IOptions<FaaGaSurveyOptions>>(), btsDataRoot));
+
+    // Cron schedules (Sources:{id}:Schedule, UTC) on an in-memory Quartz store; off with Scheduling:Enabled=false.
+    if (builder.Configuration.GetValue("Scheduling:Enabled", true))
+    {
+        builder.Services.AddQuartz();
+        builder.Services.AddQuartzHostedService(o => o.WaitForJobsToComplete = true);
+        builder.Services.AddHostedService<ScheduleInstaller>();
+    }
 }
 
 var app = builder.Build();

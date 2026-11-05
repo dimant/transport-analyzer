@@ -17,6 +17,7 @@ public sealed class ApiFactory(PostgresFixture db, string? adminToken = null, pa
     {
         builder.UseSetting("ConnectionStrings:Default", db.ConnectionString);
         builder.UseSetting("RawStore:Root", RawRoot);
+        builder.UseSetting("Scheduling:Enabled", "false");
         if (adminToken is not null) builder.UseSetting("Admin:Token", adminToken);
         builder.ConfigureTestServices(s =>
         {
