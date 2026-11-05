@@ -34,7 +34,9 @@ public sealed partial class FarsAdapter(HttpClient http, IOptions<FarsOptions> o
     private static partial Regex RawFileName();
 
     private IReadOnlyList<int> Years(IngestParameters p) =>
-        (p.Years is { Count: > 0 } ? p.Years : _options.DefaultYears).Distinct().Order().ToList();
+        (p.Years is { Count: > 0 } ? p.Years
+            : _options.DefaultYears is { Length: > 0 } ? _options.DefaultYears
+            : FarsOptions.BuiltInDefaultYears).Distinct().Order().ToList();
 
     public async Task<IReadOnlyList<RawFile>> FetchAsync(IRawStore raw, IngestParameters p, CancellationToken ct)
     {

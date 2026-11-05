@@ -11,7 +11,9 @@
 // - BODY_TYP 31 (fixture crash 10002) is a pre-2017 pickup code, absent from 2019-2023 data but inside the 30-39
 //   pickup range, which fars.csv maps code by code.
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
@@ -306,6 +308,34 @@ public class FarsAdapterTests(PostgresFixture db) : IAsyncLifetime
         var attributes = await RowsAsync("select distinct attribute from vocabulary_map where source_id = 'fars' order by 1");
         Assert.Equal(new[] { "maintenance_regime", "operator_type", "regulation_class", "vehicle_class" },
             attributes.Select(a => (string)a["attribute"]!));
+    }
+
+    private async Task<List<string>> FetchedYearsAsync(Dictionary<string, string?> config)
+    {
+        var services = new ServiceCollection();
+        services.Configure<FarsOptions>(new ConfigurationBuilder()
+            .AddInMemoryCollection(config).Build().GetSection("Sources:fars"));
+        var options = services.BuildServiceProvider().GetRequiredService<IOptions<FarsOptions>>();
+        var handler = new FarsTestSource.StubHandler(FarsTestSource.BuildZip(2022));
+        var root = Path.Combine(Path.GetTempPath(), "ta-raw-" + Guid.NewGuid().ToString("N"));
+        _rawRoots.Add(root);
+        await new FarsAdapter(new HttpClient(handler), options)
+            .FetchAsync(new RawStore(root), new IngestParameters(null), CancellationToken.None);
+        return handler.Requests.Select(u => u.Segments[^3].TrimEnd('/')).ToList();
+    }
+
+    [Fact]
+    public async Task Options_ConfiguredDefaultYears_ReplaceBuiltInDefault()
+    {
+        var years = await FetchedYearsAsync(new() { ["Sources:fars:DefaultYears:0"] = "2021" });
+        Assert.Equal(["2021"], years);
+    }
+
+    [Fact]
+    public async Task Options_NoDefaultYearsConfigured_Uses2019To2023()
+    {
+        var years = await FetchedYearsAsync(new());
+        Assert.Equal(["2019", "2020", "2021", "2022", "2023"], years);
     }
 
     [Fact]

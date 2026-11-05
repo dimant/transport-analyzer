@@ -115,6 +115,6 @@ public static partial class CsvStager
         string text;
         try { text = StrictUtf8.GetString(bytes); }
         catch (DecoderFallbackException) { text = Encoding.GetEncoding(1252).GetString(bytes); }
-        return text.Length > 0 && text[0] == '﻿' ? text[1..] : text;
+        return text.Length > 0 && text[0] == '\uFEFF' ? text[1..] : text;
     }
 }
