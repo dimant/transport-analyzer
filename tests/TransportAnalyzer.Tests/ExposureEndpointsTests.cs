@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Npgsql;
+using TransportAnalyzer.Domain;
+using TransportAnalyzer.Infrastructure;
+using TransportAnalyzer.Ingestion;
 
 namespace TransportAnalyzer.Tests;
 
@@ -16,13 +19,18 @@ public sealed class ExposureFixture(PostgresFixture db) : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await FarsTestSource.ResetToCleanFixtureAsync(db.ConnectionString, Factory.RawRoot);
+        await new IngestRunner(db.ConnectionString, new RawStore(Factory.RawRoot))
+            .RunAsync(NtsbTestSource.Adapter(), new IngestParameters([2022]), CancellationToken.None);
         await using var conn = new NpgsqlConnection(db.ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand($"""
-            delete from exposure where source_id in ('bts-passenger-miles', '{OtherSource}') and year = 2022;
+            delete from exposure where source_id in ('bts-passenger-miles', '{OtherSource}', 'faa-ga-survey') and year = 2022;
             insert into exposure (exposure_id, source_id, mode, year, vehicle_class, regulation_class, metric, value, provenance, ingest_run_id)
             values (gen_random_uuid(), 'bts-passenger-miles', 'highway', 2022, 'light_duty', null, 'passenger_miles', 1000, 'survey_estimate', gen_random_uuid()),
                    (gen_random_uuid(), 'bts-passenger-miles', 'highway', 2022, null, null, 'passenger_miles', 5000, 'survey_estimate', gen_random_uuid()),
+                   (gen_random_uuid(), 'faa-ga-survey', 'aviation', 2022, 'light_aircraft', 'general_aviation', 'flight_hours', 12000000, 'survey_estimate', gen_random_uuid()),
+                   (gen_random_uuid(), 'faa-ga-survey', 'aviation', 2022, 'turboprop', 'general_aviation', 'flight_hours', 1500000, 'survey_estimate', gen_random_uuid()),
+                   (gen_random_uuid(), 'faa-ga-survey', 'aviation', 2022, 'business_jet', 'general_aviation', 'flight_hours', 900000, 'survey_estimate', gen_random_uuid()),
                    (gen_random_uuid(), '{OtherSource}', 'highway', 2022, 'light_duty', null, 'passenger_miles', 7, 'measured', gen_random_uuid());
             """, conn);
         await cmd.ExecuteNonQueryAsync();
@@ -102,7 +110,9 @@ public class ExposureEndpointsTests(ExposureFixture fx) : IClassFixture<Exposure
 
         var row = Assert.Single(Rows(body), r => r["vehicle_class"].GetString() == "light_duty");
         Assert.Equal(3, row["numerator"].GetInt64());
-        var unattributed = Assert.Single(body.GetProperty("unattributed").EnumerateArray());
+        // The class fixture also holds NTSB aviation events; this test is about highway.
+        var unattributed = Assert.Single(body.GetProperty("unattributed").EnumerateArray(),
+            u => u.GetProperty("mode").GetString() == "highway");
         Assert.Equal("highway", unattributed.GetProperty("mode").GetString());
         Assert.Equal(2022, unattributed.GetProperty("year").GetInt32());
         Assert.Equal(1, unattributed.GetProperty("fatalities").GetInt64());
@@ -113,14 +123,15 @@ public class ExposureEndpointsTests(ExposureFixture fx) : IClassFixture<Exposure
     {
         var body = await GetAsync(Rates2022);
 
-        var row = Assert.Single(Rows(body));
+        // The class fixture also holds NTSB aviation events; this test is about highway.
+        var row = Assert.Single(Rows(body), r => r["mode"].GetString() == "highway");
         Assert.Equal(JsonValueKind.Null, row["vehicle_class"].ValueKind);
         Assert.Equal(2, row["numerator"].GetInt64());
         Assert.Equal(5000, row["denominator"].GetDouble());
         Assert.Equal("mode", row["join_level"].GetString());
-        Assert.Empty(body.GetProperty("unmatched").EnumerateArray());
+        Assert.DoesNotContain(body.GetProperty("unmatched").EnumerateArray(), u => u.GetProperty("mode").GetString() == "highway");
         // The measure does not change the unattributed list.
-        Assert.Single(body.GetProperty("unattributed").EnumerateArray());
+        Assert.Single(body.GetProperty("unattributed").EnumerateArray(), u => u.GetProperty("mode").GetString() == "highway");
     }
 
     [Fact]
@@ -151,9 +162,60 @@ public class ExposureEndpointsTests(ExposureFixture fx) : IClassFixture<Exposure
     [InlineData("measure=occupant_fatalities&metric=passenger_miles&fromYear=2023&toYear=2022", "fromYear")]
     [InlineData("measure=occupant_fatalities&metric=passenger_miles&fromYear=2022&toYear=2022&groupBy=mode", "groupBy")]
     [InlineData("measure=occupant_fatalities&metric=passenger_miles&fromYear=2022&toYear=2022&groupBy=vehicle_class,vehicle_class", "groupBy")]
-    [InlineData("measure=occupant_fatalities&metric=flight_hours&fromYear=2022&toYear=2022", "exposureSource")]
     public async Task Rates_InvalidParameters_Return400(string query, string parameter) =>
         await AssertBadRequestAsync("/api/rates?" + query, parameter);
+
+    private const string FlightHours2022 =
+        "/api/rates?measure=occupant_fatalities&metric=flight_hours&fromYear=2022&toYear=2022&groupBy=vehicle_class,regulation_class";
+
+    [Fact]
+    public async Task Rates_ExcludeNonUsEvents()
+    {
+        var body = await GetAsync(FlightHours2022);
+
+        Assert.Equal("US", body.GetProperty("scope").GetProperty("country").GetString());
+        // E4 (BR, 2 fatalities) must contribute nothing: no unmatched cell and no unattributed entry carries it.
+        Assert.Equal(0, body.GetProperty("unmatched").EnumerateArray().Where(u => u.GetProperty("reason").GetString() == "no_exposure"
+            && u.GetProperty("vehicleClass").GetString() == "business_jet").Sum(u => u.GetProperty("numerator").GetInt64()));
+        Assert.DoesNotContain(Rows(body), r => r["vehicle_class"].GetString() == "business_jet" && r["numerator"].GetInt64() > 0);
+        Assert.DoesNotContain(body.GetProperty("unmatched").EnumerateArray(), u => u.GetProperty("vehicleClass").GetString() == "other");
+        Assert.DoesNotContain(body.GetProperty("unattributed").EnumerateArray(), u => u.GetProperty("fatalities").GetInt64() == 2);
+    }
+
+    [Fact]
+    public async Task Rates_FlightHoursDefaultsToFaaSurvey()
+    {
+        var body = await GetAsync(FlightHours2022);
+
+        var rows = Rows(body);
+        Assert.NotEmpty(rows);
+        Assert.All(rows, r => Assert.Equal("faa-ga-survey", r["exposure_source"].GetString()));
+    }
+
+    [Fact]
+    public async Task Rates_GaByClass_RollsPart91And135IntoGeneralAviation()
+    {
+        var body = await GetAsync(FlightHours2022);
+
+        var light = Assert.Single(Rows(body), r => r["vehicle_class"].GetString() == "light_aircraft");
+        Assert.Equal("general_aviation", light["regulation_class"].GetString());
+        Assert.Equal(1, light["numerator"].GetInt64());
+        Assert.Equal(12000000, light["denominator"].GetDouble());
+        var turboprop = Assert.Single(Rows(body), r => r["vehicle_class"].GetString() == "turboprop");
+        Assert.Equal(1, turboprop["numerator"].GetInt64());
+        Assert.Equal(1500000, turboprop["denominator"].GetDouble());
+        Assert.Contains(body.GetProperty("unmatched").EnumerateArray(), u =>
+            u.GetProperty("vehicleClass").GetString() == "turboprop"
+            && u.GetProperty("regulationClass").GetString() == "part_135_scheduled"
+            && u.GetProperty("reason").GetString() == "no_exposure");
+    }
+
+    [Fact]
+    public async Task Rates_HighwayResponseCarriesUsScope()
+    {
+        var body = await GetAsync(Rates2022 + "&groupBy=vehicle_class");
+        Assert.Equal("US", body.GetProperty("scope").GetProperty("country").GetString());
+    }
 
     [Fact]
     public async Task Exposure_ReturnsRowsForMetric()

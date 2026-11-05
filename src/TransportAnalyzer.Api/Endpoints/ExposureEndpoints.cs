@@ -17,6 +17,7 @@ public static class ExposureEndpoints
     {
         ["passenger_miles"] = "bts-passenger-miles",
         ["vehicle_miles"] = "bts-vehicle-miles",
+        ["flight_hours"] = "faa-ga-survey",
     };
 
     /// <summary>Vehicle-grain measures summed into each numerator. Attributed casualties only.</summary>
@@ -35,7 +36,13 @@ public static class ExposureEndpoints
     private static readonly string[] ExposureColumns =
         ["source_id", "mode", "year", VehicleClass, RegulationClass, "metric", "value", "provenance", "standard_error"];
 
-    private static readonly Dictionary<string, IReadOnlyList<string>> NoFilters = new();
+    /// <summary>Rates cover US events only: exposure denominators (BTS, FAA) are national.</summary>
+    private const string ScopeCountry = "US";
+
+    private static readonly Dictionary<string, IReadOnlyList<string>> UsScope = new()
+    {
+        ["country"] = [ScopeCountry],
+    };
 
     public static void MapExposureEndpoints(this WebApplication app, string connectionString)
     {
@@ -136,6 +143,7 @@ public static class ExposureEndpoints
             {
                 measure,
                 metric,
+                scope = new { country = ScopeCountry },
                 columns = RateColumns,
                 rows = result.Rows.Select(r => new object?[]
                 {
@@ -195,7 +203,7 @@ public static class ExposureEndpoints
 
     private static AggregateQuery Build(string grain, DateOnly from, DateOnly to, IReadOnlyList<string> groupBy)
     {
-        var query = AggregateQuery.Create(grain, from, to, "year", groupBy, NoFilters);
+        var query = AggregateQuery.Create(grain, from, to, "year", groupBy, UsScope);
         return query.IsSuccess ? query.Value
             : throw new InvalidOperationException($"rates aggregate rejected: {query.Error.error}");
     }
