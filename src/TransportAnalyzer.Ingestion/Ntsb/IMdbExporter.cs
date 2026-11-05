@@ -101,9 +101,10 @@ public sealed class MdbToolsExporter(string mdbTablesPath = "mdb-tables", string
 
         private async Task FinishAsync(CancellationToken ct)
         {
-            _finished = true;
+            // Set only once the exit status has been checked, so a retry after cancellation re-checks.
             await _process.WaitForExitAsync(ct);
             var err = await _stderr;
+            _finished = true;
             if (_process.ExitCode != 0) throw Failure(_binary, _process.ExitCode, err);
         }
 
