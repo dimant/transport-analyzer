@@ -4,3 +4,9 @@ bin/
 obj/
 .vs/
 *.user
+
+# Manually downloaded source files (BTS xlsx); only the folders are tracked.
+data/inbox/**
+!data/inbox/
+!data/inbox/**/
+!data/inbox/**/.gitkeep

@@ -5,6 +5,7 @@ using TransportAnalyzer.Api.Endpoints;
 using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
 using TransportAnalyzer.Ingestion;
+using TransportAnalyzer.Ingestion.Bts;
 using TransportAnalyzer.Ingestion.Fars;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,6 +28,18 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddSingleton<ISourceAdapter>(sp => new FarsAdapter(
         sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(FarsAdapter)),
         sp.GetRequiredService<IOptions<FarsOptions>>()));
+
+    // BTS tables are downloaded by hand into {Inbox:Root}/{sourceId}/. Unset: the nearest data/inbox walking up
+    // from the working directory (works for `dotnet run` in any project folder), else ./data/inbox.
+    var inboxRoot = builder.Configuration["Inbox:Root"] ?? FindInboxRoot();
+    var btsDataRoot = builder.Configuration["Data:Root"] ?? Path.Combine(AppContext.BaseDirectory, "data");
+    foreach (var defaults in new[] { BtsTableOptions.PassengerMiles(), BtsTableOptions.VehicleMiles() })
+    {
+        var options = defaults;
+        builder.Configuration.GetSection($"Sources:{options.SourceId}").Bind(options);
+        options.InboxDir = Path.Combine(inboxRoot, options.SourceId);
+        builder.Services.AddSingleton<ISourceAdapter>(new BtsNtsTableAdapter(options, btsDataRoot));
+    }
 }
 
 var app = builder.Build();
@@ -51,5 +64,15 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     app.MapAdminEndpoints(connectionString);
 
 app.Run();
+
+static string FindInboxRoot()
+{
+    for (var dir = new DirectoryInfo(Directory.GetCurrentDirectory()); dir is not null; dir = dir.Parent)
+    {
+        var candidate = Path.Combine(dir.FullName, "data", "inbox");
+        if (Directory.Exists(candidate)) return candidate;
+    }
+    return Path.Combine(Directory.GetCurrentDirectory(), "data", "inbox");
+}
 
 public partial class Program;

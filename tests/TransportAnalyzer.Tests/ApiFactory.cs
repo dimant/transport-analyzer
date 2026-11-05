@@ -20,8 +20,22 @@ public sealed class ApiFactory(PostgresFixture db, string? adminToken = null, pa
         if (adminToken is not null) builder.UseSetting("Admin:Token", adminToken);
         builder.ConfigureTestServices(s =>
         {
+            RemoveReplacedAdapters(s);
             foreach (var a in adapters) s.AddSingleton(a);
         });
+    }
+
+    /// <summary>Adapters passed in replace any registered adapter with the same SourceId (IngestQueue keys by id).
+    /// Registered adapters are built once from a throwaway provider just to read their ids.</summary>
+    private void RemoveReplacedAdapters(IServiceCollection s)
+    {
+        if (adapters.Length == 0) return;
+        var descriptors = s.Where(d => d.ServiceType == typeof(ISourceAdapter)).ToList();
+        using var probe = s.BuildServiceProvider();
+        var built = probe.GetServices<ISourceAdapter>().ToList();
+        var replaced = adapters.Select(a => a.Descriptor.SourceId).ToHashSet();
+        for (var i = 0; i < descriptors.Count; i++)
+            if (replaced.Contains(built[i].Descriptor.SourceId)) s.Remove(descriptors[i]);
     }
 
     protected override void Dispose(bool disposing)

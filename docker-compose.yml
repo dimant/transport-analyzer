@@ -17,8 +17,10 @@ services:
     environment:
       ConnectionStrings__Default: Host=db;Database=transport;Username=transport;Password=transport
       RawStore__Root: /data/raw
+      Inbox__Root: /data/inbox
     volumes:
       - rawdata:/data/raw
+      - ./data/inbox:/data/inbox
     depends_on:
       db:
         condition: service_healthy
