@@ -27,6 +27,14 @@ public sealed class SampleFixture(PostgresFixture db) : IAsyncLifetime
             .RunAsync(NtsbTestSource.Adapter(), new IngestParameters([2022]), CancellationToken.None);
     }
 
+    /// <summary>Re-ingests both fixtures unchanged; normalize regenerates every event_id and vehicle_id.</summary>
+    public async Task ReingestAsync()
+    {
+        await FarsTestSource.ResetToCleanFixtureAsync(db.ConnectionString, Factory.RawRoot);
+        await new IngestRunner(db.ConnectionString, new RawStore(Factory.RawRoot))
+            .RunAsync(NtsbTestSource.Adapter(), new IngestParameters([2022]), CancellationToken.None);
+    }
+
     public async Task DisposeAsync() => await Factory.DisposeAsync();
 }
 
@@ -65,6 +73,17 @@ public class SampleTests(SampleFixture fx) : IClassFixture<SampleFixture>
     }
 
     [Fact]
+    public async Task Sample_SameSeedAcrossReingest_SameRows()
+    {
+        var before = Rows(await GetAsync($"{Year2022}&seed=42"));
+        await fx.ReingestAsync();
+        var after = Rows(await GetAsync($"{Year2022}&seed=42"));
+
+        Assert.Equal(11, before.Count);
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
     public async Task Sample_DifferentSeed_DifferentOrder()
     {
         var a = Rows(await GetAsync($"{Year2022}&seed=1"));
@@ -80,7 +99,7 @@ public class SampleTests(SampleFixture fx) : IClassFixture<SampleFixture>
         var body = await GetAsync($"{Year2022}&f.mode=aviation&n=3");
 
         var columns = body.GetProperty("columns").EnumerateArray().Select(c => c.GetString()!).ToList();
-        Assert.Equal([.. Dimensions.All.Keys, "occurred_on", "occupant_fatalities", "occupant_serious_injuries",
+        Assert.Equal(["source_id", "source_key", "vehicle_no", .. Dimensions.All.Keys.Where(k => k != "source_id"), "occurred_on", "occupant_fatalities", "occupant_serious_injuries",
             "occupant_minor_injuries", "nonoccupant_fatalities", "nonoccupant_serious_injuries", "nonoccupant_minor_injuries"],
             columns);
         var rows = body.GetProperty("rows").EnumerateArray().ToList();
@@ -89,6 +108,9 @@ public class SampleTests(SampleFixture fx) : IClassFixture<SampleFixture>
         Assert.Equal(7, body.GetProperty("total").GetInt64());
         Assert.All(rows, r => Assert.Equal("aviation", r[columns.IndexOf("mode")].GetString()));
         Assert.All(rows, r => Assert.StartsWith("2022-", r[columns.IndexOf("occurred_on")].GetString()));
+        Assert.All(rows, r => Assert.Equal("ntsb", r[columns.IndexOf("source_id")].GetString()));
+        Assert.All(rows, r => Assert.False(string.IsNullOrEmpty(r[columns.IndexOf("source_key")].GetString())));
+        Assert.All(rows, r => Assert.True(r[columns.IndexOf("vehicle_no")].GetInt32() >= 1));
     }
 
     [Fact]

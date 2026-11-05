@@ -4,7 +4,8 @@ using Dapper;
 
 namespace TransportAnalyzer.Api.Query;
 
-/// <summary>A reproducible sample of vehicle rows (each joined to its event). Scope (dates, filters) is parsed and
+/// <summary>A reproducible sample of vehicle rows (each joined to its event): the same seed and data give the same rows,
+/// also after a re-ingest of unchanged source data. Scope (dates, filters) is parsed and
 /// validated by <see cref="AggregateQuery"/>; SQL text comes only from <see cref="Dimensions"/> and fixed fragments.</summary>
 public sealed class SampleQuery
 {
@@ -24,8 +25,15 @@ public sealed class SampleQuery
     public int N { get; }
     public long Seed { get; }
 
+    /// <summary>The event's natural key and the vehicle number come first so a row can be traced back to its source
+    /// record; <c>source_id</c> is that key's first part and is therefore not repeated among the dimensions.</summary>
+    private static readonly string[] KeyColumns = ["source_id", "source_key", "vehicle_no"];
+
+    private static readonly Dimension[] SampleDimensions =
+        [.. Dimensions.All.Values.Where(d => !KeyColumns.Contains(d.Name))];
+
     public static IReadOnlyList<string> Columns { get; } =
-        [.. Dimensions.All.Keys, "occurred_on", .. Measures];
+        [.. KeyColumns, .. SampleDimensions.Select(d => d.Name), "occurred_on", .. Measures];
 
     /// <summary>Parses <c>from, to, n, seed, f.{dimension}</c>.</summary>
     public static Result<SampleQuery, (string error, string parameter)> Parse(IQueryCollection q)
@@ -60,11 +68,15 @@ public sealed class SampleQuery
         p.Add("seed", Seed);
         p.Add("n", N);
 
-        var select = Dimensions.All.Values.Select(d => $"{d.Sql} as \"{d.Name}\"")
+        var select = new[] { "e.source_id as \"source_id\"", "e.source_key as \"source_key\"", "v.vehicle_no as \"vehicle_no\"" }
+            .Concat(SampleDimensions.Select(d => $"{d.Sql} as \"{d.Name}\""))
             .Append("to_char(e.occurred_on, 'YYYY-MM-DD') as \"occurred_on\"")
             .Concat(Measures.Select(m => $"v.{m} as \"{m}\""));
+        // Ordered by the natural key (stable across re-ingests, unlike the regenerated vehicle_id). The '|' separator
+        // keeps ("2022-10001", 11) and ("2022-100011", 1) from hashing the same input.
         var sql = $"select {string.Join(", ", select)}{fromWhere}" +
-                  " order by md5(v.vehicle_id::text || @seed::text), v.vehicle_id limit @n";
+                  " order by md5(concat_ws('|', e.source_id, e.source_key, v.vehicle_no::text, @seed::text))," +
+                  " e.source_id, e.source_key, v.vehicle_no limit @n";
 
         var total = await conn.ExecuteScalarAsync<long>(
             new CommandDefinition($"select count(*){fromWhere}", p, cancellationToken: ct));
