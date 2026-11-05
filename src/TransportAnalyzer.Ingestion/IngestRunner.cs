@@ -114,6 +114,19 @@ public class IngestRunner(string connectionString, IRawStore raw, ILogger? logge
         return await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>Fails the source's 'running' rows started more than <paramref name="after"/> ago.</summary>
+    public async Task<int> FailStaleAsync(string sourceId, TimeSpan after, CancellationToken ct)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand(
+            "update ingest_run set status = 'failed', finished_at = now(), error = 'stale: exceeded Ingest:StaleRunAfter' " +
+            "where source_id = @s and status = 'running' and started_at < now() - @after", conn);
+        cmd.Parameters.AddWithValue("s", sourceId);
+        cmd.Parameters.AddWithValue("after", after);
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     /// <summary>Id of a run for the source that is still 'running', if any.</summary>
     public async Task<Guid?> FindRunningAsync(string sourceId, CancellationToken ct)
     {

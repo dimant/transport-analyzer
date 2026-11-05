@@ -76,6 +76,7 @@ public sealed partial class FarsAdapter(HttpClient http, IOptions<FarsOptions> o
 
     public async Task<NormalizeResult> NormalizeAsync(NpgsqlConnection conn, Guid runId, IngestParameters p, CancellationToken ct)
     {
+        await EnsureEveryYearHasAccidentsAsync(conn, Years(p), ct);
         await using var cmd = new NpgsqlCommand(NormalizeSql.Value, conn) { CommandTimeout = 1800 };
         cmd.Parameters.Add(new NpgsqlParameter("years", NpgsqlDbType.Array | NpgsqlDbType.Integer) { Value = Years(p).ToArray() });
         cmd.Parameters.Add(new NpgsqlParameter("run_id", NpgsqlDbType.Uuid) { Value = runId });
@@ -89,5 +90,19 @@ public sealed partial class FarsAdapter(HttpClient http, IOptions<FarsOptions> o
                 (r.GetString(0) == "rows" ? rowCounts : unmapped)[r.GetString(1)] = r.GetInt64(2);
         } while (await r.NextResultAsync(ct));
         return new NormalizeResult(rowCounts, unmapped);
+    }
+
+    /// <summary>A requested year with no staged accident rows would make the normalize delete all of that year's
+    /// events (R25); fail the run instead so the transaction rolls back.</summary>
+    private static async Task EnsureEveryYearHasAccidentsAsync(NpgsqlConnection conn, IReadOnlyList<int> years, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(
+            "select y from unnest(@years) y where not exists (select 1 from stg_fars.accident a where a.data_year::int = y) order by y", conn);
+        cmd.Parameters.Add(new NpgsqlParameter("years", NpgsqlDbType.Array | NpgsqlDbType.Integer) { Value = years.ToArray() });
+        var empty = new List<int>();
+        await using (var r = await cmd.ExecuteReaderAsync(ct))
+            while (await r.ReadAsync(ct)) empty.Add(r.GetInt32(0));
+        if (empty.Count > 0)
+            throw new InvalidDataException($"FARS year(s) {string.Join(", ", empty)} have no accident rows; refusing to replace existing events.");
     }
 }

@@ -20,6 +20,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddSingleton<IRawStore>(new RawStore(rawRoot));
     builder.Services.AddSingleton(sp => new IngestRunner(connectionString, sp.GetRequiredService<IRawStore>(),
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<IngestRunner>()));
+    builder.Services.Configure<IngestOptions>(builder.Configuration.GetSection("Ingest"));
     builder.Services.AddSingleton<IngestQueue>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<IngestQueue>());
 

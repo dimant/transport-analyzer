@@ -218,4 +218,27 @@ public class IngestRunnerTests(PostgresFixture db)
         Assert.Equal(existing, body.GetProperty("runId").GetGuid());
         Assert.True(body.TryGetProperty("error", out _));
     }
+
+    [Fact]
+    public async Task AdminIngest_StaleRunningRow_DoesNotBlock()
+    {
+        await using var factory = new ApiFactory(db, null, new FakeAdapter("fake-stale"));
+        var client = factory.CreateClient();
+        var stale = Guid.NewGuid();
+        await InsertRunning(stale, "fake-stale");
+        await using (var conn = new NpgsqlConnection(db.ConnectionString))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "update ingest_run set started_at = now() - interval '7 hours' where ingest_run_id = @id", conn);
+            cmd.Parameters.AddWithValue("id", stale);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        var res = await client.PostAsync("/api/admin/ingest/fake-stale", null);
+        Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
+        var run = await GetRun(stale);
+        Assert.Equal("failed", run.status);
+        Assert.Equal("stale: exceeded Ingest:StaleRunAfter", run.error);
+        Assert.True(run.finished);
+    }
 }

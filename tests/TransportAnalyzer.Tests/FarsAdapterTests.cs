@@ -386,4 +386,23 @@ public class FarsAdapterTests(PostgresFixture db) : IAsyncLifetime
         Assert.Equal("highway", fars.Descriptor.Mode);
         Assert.Equal("events", fars.Descriptor.Kind);
     }
+
+    [Fact]
+    public async Task Fars_RequestedYearWithNoAccidentRows_FailsRunAndKeepsEvents()
+    {
+        await AssertSucceededAsync(await IngestAsync());
+        var before = await RowsAsync("select source_key from event where source_id = 'fars' and source_key like '2022-%'");
+        Assert.Equal(3, before.Count);
+
+        var headerOnly = FarsTestSource.BuildZip(2022, (file, text) =>
+            file == "accident.csv" ? text[..(text.IndexOf('\n') + 1)] : text);
+        var runId = await IngestAsync(headerOnly);
+
+        var run = await RowAsync($"select status, error from ingest_run where ingest_run_id = '{runId}'");
+        Assert.Equal("failed", run["status"]);
+        Assert.Contains("2022", (string)run["error"]!);
+        Assert.Contains("no accident rows", (string)run["error"]!);
+        var after = await RowsAsync("select source_key from event where source_id = 'fars' and source_key like '2022-%'");
+        Assert.Equal(3, after.Count);
+    }
 }

@@ -1,13 +1,16 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TransportAnalyzer.Domain;
 
 namespace TransportAnalyzer.Ingestion;
 
-public sealed class IngestQueue(IngestRunner runner, IEnumerable<ISourceAdapter> adapters, ILogger<IngestQueue> logger)
-    : BackgroundService
+public sealed class IngestQueue(IngestRunner runner, IEnumerable<ISourceAdapter> adapters, ILogger<IngestQueue> logger,
+    IOptions<IngestOptions>? options = null) : BackgroundService
 {
+    private readonly TimeSpan _staleRunAfter = options?.Value.StaleRunAfter ?? new IngestOptions().StaleRunAfter;
+
     private readonly Channel<(string sourceId, IngestParameters p, Guid runId)> _channel =
         Channel.CreateUnbounded<(string, IngestParameters, Guid)>();
     private readonly Dictionary<string, ISourceAdapter> _adapters =
@@ -25,12 +28,14 @@ public sealed class IngestQueue(IngestRunner runner, IEnumerable<ISourceAdapter>
 
     private readonly SemaphoreSlim _enqueueLock = new(1, 1);
 
-    /// <summary>Like EnqueueAsync, but refuses when a run for the source is already 'running'.</summary>
+    /// <summary>Like EnqueueAsync, but refuses when a run for the source is already 'running'
+    /// (a run older than Ingest:StaleRunAfter is failed first and does not count).</summary>
     public async Task<(bool Started, Guid RunId)> TryEnqueueAsync(string sourceId, IngestParameters p)
     {
         await _enqueueLock.WaitAsync();
         try
         {
+            await runner.FailStaleAsync(sourceId, _staleRunAfter, CancellationToken.None);
             if (await runner.FindRunningAsync(sourceId, CancellationToken.None) is { } existing)
                 return (false, existing);
             return (true, await EnqueueAsync(sourceId, p));
