@@ -61,7 +61,10 @@ app.UseStaticFiles();
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 
 if (!string.IsNullOrWhiteSpace(connectionString))
+{
     app.MapAdminEndpoints(connectionString);
+    app.MapSourceEndpoints(connectionString);
+}
 
 app.Run();
 
