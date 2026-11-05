@@ -1,1 +1,9 @@
 row_label,mode,vehicle_class,regulation_class,provenance
+"U.S. air carrier, certificated, domestic, all services",aviation,,part_121,measured
+"Highway, total",highway,,,survey_estimate
+"Light duty vehicle, short wheel base",highway,light_duty,,survey_estimate
+"Light duty vehicle, long wheel base",highway,light_duty,,survey_estimate
+Motorcycle,highway,motorcycle,,survey_estimate
+Bus,highway,bus,,survey_estimate
+"Truck, single-unit 2-axle 6-tire or more",highway,heavy_truck,,survey_estimate
+"Truck, combination",highway,heavy_truck,,survey_estimate

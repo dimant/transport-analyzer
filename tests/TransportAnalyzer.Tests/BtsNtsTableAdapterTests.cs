@@ -25,20 +25,27 @@ public class BtsNtsTableAdapterTests(PostgresFixture db) : IDisposable
         new("Air carrier, domestic, all services", "aviation", null, "part_121", "measured"),
         new("Light duty vehicle, short wheel base", "highway", "light_duty", null, "survey_estimate"),
         new("Light duty vehicle, long wheel base", "highway", "light_duty", null, "survey_estimate"),
+        new("Motorcycle", "highway", "motorcycle", null, "survey_estimate"),
     ];
 
     private static XLWorkbook Workbook(Action<IXLWorksheet>? extra = null)
     {
         var wb = new XLWorkbook();
+        // Like the real download: an older-edition sheet comes first and must not be read.
+        var decoy = wb.AddWorksheet("1-40_all");
+        decoy.Cell(1, 1).Value = "Table 1-40 (older edition)";
+        for (var i = 0; i < 5; i++) decoy.Cell(2, i + 2).Value = 2015 + i;
+        Row(decoy, 3, "Air carrier, domestic, all services", 7, 7, 7, 7, 7);
         var ws = wb.AddWorksheet("1-40");
         ws.Cell(1, 1).Value = "Table 1-40 U.S. Passenger-Miles (millions)";
         ws.Cell(2, 1).Value = "Source: BTS";
         ws.Cell(4, 2).Value = 2019; ws.Cell(4, 3).Value = 2020; ws.Cell(4, 4).Value = 2021;
         ws.Cell(4, 5).Value = 2022; ws.Cell(4, 6).Value = 2023;
         Row(ws, 5, "Air carrier, domestic, all services", 1, 2, "U", 4, 5);
-        Row(ws, 6, "Light duty vehicle, short wheel base", 10, 11, 12, 13, 14);
-        Row(ws, 7, "Light duty vehicle, long wheel base", 5, 5, 5, 5, 5);
+        Row(ws, 6, "Light duty vehicle, short wheel basea,b", 10, 11, 12, 13, 14);
+        Row(ws, 7, "Light duty vehicle, long wheel baseb", 5, 5, 5, 5, 5);
         Row(ws, 8, "Unwanted row", 9, 9, 9, 9, 9);
+        Row(ws, 10, "Motorcycleb", 2, 2, 2, 2, 2);
         extra?.Invoke(ws);
         return wb;
     }
@@ -52,7 +59,7 @@ public class BtsNtsTableAdapterTests(PostgresFixture db) : IDisposable
     }
 
     private static List<ExposureRow> Parse(XLWorkbook wb) =>
-        BtsNtsTableAdapter.Parse(wb, Map, "passenger_miles", 1_000_000).ToList();
+        BtsNtsTableAdapter.Parse(wb, Map, "passenger_miles", 1_000_000, "1-40").ToList();
 
     [Fact]
     public void Parse_FindsHeaderAndMultipliesUnits()
@@ -100,6 +107,28 @@ public class BtsNtsTableAdapterTests(PostgresFixture db) : IDisposable
     }
 
     [Fact]
+    public void Parse_PartialSum_EmitsNoRowForThatYear()
+    {
+        // long wheel base has no value for 2021: light_duty 2021 would be understated, so it is dropped.
+        using var wb = Workbook(ws => ws.Cell(7, 4).Value = "U");
+        var (rows, partials) = BtsNtsTableAdapter.Aggregate(BtsNtsTableAdapter.ParseCells(wb, "1-40"), Map, "passenger_miles", 1_000_000);
+        Assert.DoesNotContain(rows, r => r.VehicleClass == "light_duty" && r.Year == 2021);
+        Assert.Contains(rows, r => r.VehicleClass == "light_duty" && r.Year == 2022);
+        Assert.Equal([("highway", "light_duty", 2021)], partials);
+    }
+
+    [Fact]
+    public async Task Ingest_PartialSum_IsCountedUnmapped()
+    {
+        Drop("t.xlsx", Workbook(ws => ws.Cell(7, 4).Value = "U"));
+        var run = await RunAsync(Adapter());
+        var u = (await QueryAsync($"select unmapped::text, status from ingest_run where ingest_run_id = '{run}'"))[0];
+        Assert.Equal("succeeded", u[1]);
+        Assert.Contains("\"partial_sum:highway/light_duty/2021\": 1", (string)u[0]);
+        Assert.Equal(0L, (await QueryAsync($"select count(*) from exposure where source_id = '{SourceId}' and vehicle_class = 'light_duty' and year = 2021"))[0][0]);
+    }
+
+    [Fact]
     public void Parse_NoYearHeader_Throws()
     {
         using var wb = new XLWorkbook();
@@ -116,7 +145,8 @@ public class BtsNtsTableAdapterTests(PostgresFixture db) : IDisposable
             "row_label,mode,vehicle_class,regulation_class,provenance\n" +
             "\"Air carrier, domestic, all services\",aviation,,part_121,measured\n" +
             "\"Light duty vehicle, short wheel base\",highway,light_duty,,survey_estimate\n" +
-            "\"Light duty vehicle, long wheel base\",highway,light_duty,,survey_estimate\n");
+            "\"Light duty vehicle, long wheel base\",highway,light_duty,,survey_estimate\n" +
+            "Motorcycle,highway,motorcycle,,survey_estimate\n");
         var o = BtsTableOptions.PassengerMiles();
         o.SourceId = SourceId;
         o.MappingFile = "bts-test-pm.csv";
@@ -164,14 +194,14 @@ public class BtsNtsTableAdapterTests(PostgresFixture db) : IDisposable
 
         var status = await QueryAsync($"select status, error from ingest_run where ingest_run_id in ('{first}', '{second}')");
         Assert.All(status, s => Assert.True((string)s[0] == "succeeded", s[1]?.ToString()));
-        Assert.Equal(9, before.Count); // aviation 2019, 2020, 2022, 2023 + light_duty 2019..2023
+        Assert.Equal(14, before.Count); // aviation 2019, 2020, 2022, 2023 + light_duty and motorcycle 2019..2023
         Assert.Equal(before.Count, after.Count);
         Assert.Equal(before.Select(r => (double)r[2]), after.Select(r => (double)r[2]));
         Assert.Equal(0L, (await QueryAsync($"select count(*) from exposure where source_id = '{SourceId}' and ingest_run_id <> '{second}'"))[0][0]);
         Assert.Equal(16_000_000.0, (double)(await QueryAsync(
             $"select value from exposure where source_id = '{SourceId}' and vehicle_class = 'light_duty' and year = 2020"))[0][0]);
         // staging is replaced, not appended
-        Assert.Equal(19L, (await QueryAsync("select count(*) from stg_bts.bts_test_pm"))[0][0]);
+        Assert.Equal(24L, (await QueryAsync("select count(*) from stg_bts.bts_test_pm"))[0][0]);
     }
 
     [Fact]

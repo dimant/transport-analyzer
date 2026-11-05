@@ -46,7 +46,7 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
         var file = files.Single();
         List<(string Label, int Year, double Value)> cells;
         using (var wb = new XLWorkbook(file.Path))
-            cells = ParseCells(wb).ToList();
+            cells = ParseCells(wb, o.SheetName).ToList();
 
         await using (var ddl = new NpgsqlCommand(
             $"create schema if not exists {StagingSchema}; " +
@@ -74,7 +74,8 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
                     double.Parse(r.GetString(2), CultureInfo.InvariantCulture)));
 
         var years = p.Years is { Count: > 0 } ? p.Years.ToHashSet() : null;
-        var rows = Aggregate(cells, map, o.Metric, o.UnitMultiplier).Where(r => years is null || years.Contains(r.Year)).ToList();
+        var (aggregated, partials) = Aggregate(cells, map, o.Metric, o.UnitMultiplier);
+        var rows = aggregated.Where(r => years is null || years.Contains(r.Year)).ToList();
 
         var written = 0L;
         foreach (var row in rows)
@@ -98,24 +99,33 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
         }
 
         // A mapped label that never appears in the sheet means the table layout drifted; surface it.
-        var present = cells.Select(c => c.Item1).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var present = cells.Select(c => c.Item1).Distinct().ToList();
         var unmapped = map.Select(m => m.RowLabel).Distinct(StringComparer.OrdinalIgnoreCase)
-            .Where(l => !present.Contains(CleanLabel(l)))
+            .Where(l => !present.Any(p => LabelMatches(p, l)))
             .ToDictionary(l => $"exposure:row_label={l}", _ => 1L);
+        // R14: a key/year where only some of its summed rows have a value is dropped, never understated.
+        foreach (var (mode, vehicleClass, year) in partials)
+            if (years is null || years.Contains(year))
+                unmapped[$"partial_sum:{mode}/{vehicleClass}/{year}"] = 1L;
         return new NormalizeResult(new Dictionary<string, long> { ["exposure"] = written }, unmapped);
     }
 
     /// <summary>Test entry point: parse a workbook straight to exposure rows.</summary>
-    internal static IEnumerable<ExposureRow> Parse(XLWorkbook wb, IReadOnlyList<RowMap> map, string metric, double unitMultiplier) =>
-        Aggregate(ParseCells(wb), map, metric, unitMultiplier);
+    internal static IEnumerable<ExposureRow> Parse(XLWorkbook wb, IReadOnlyList<RowMap> map, string metric,
+        double unitMultiplier, string? sheetName = null) =>
+        Aggregate(ParseCells(wb, sheetName), map, metric, unitMultiplier).Rows;
 
-    /// <summary>Every numeric cell under a year header, keyed by cleaned row label. Cells such as U, N, R, empty or
-    /// text are skipped.</summary>
-    internal static IEnumerable<(string Label, int Year, double Value)> ParseCells(XLWorkbook wb)
+    /// <summary>Every numeric cell under a year header on the named worksheet (first worksheet when null), keyed by
+    /// row label. Cells such as U, N, R, empty or text are skipped.</summary>
+    internal static IEnumerable<(string Label, int Year, double Value)> ParseCells(XLWorkbook wb, string? sheetName = null)
     {
-        var ws = wb.Worksheets.First();
+        // The real downloads carry other sheets (a graph, an older edition with broken formulas); take the named one.
+        var ws = sheetName is null
+            ? wb.Worksheets.First()
+            : wb.Worksheets.FirstOrDefault(w => w.Name == sheetName)
+                ?? throw new InvalidDataException($"Worksheet '{sheetName}' not found.");
         var used = ws.RangeUsed();
-        if (used is null) yield break;
+        if (used is null) throw new InvalidDataException($"Worksheet '{ws.Name}' is empty.");
 
         var lastCol = used.LastColumn().ColumnNumber();
         var headerRow = 0;
@@ -138,19 +148,50 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
         }
     }
 
-    internal static IEnumerable<ExposureRow> Aggregate(IEnumerable<(string Label, int Year, double Value)> cells,
-        IReadOnlyList<RowMap> map, string metric, double unitMultiplier)
+    /// <summary>Maps cells to exposure keys. A mapping row contributes once per year (its matching sheet rows are
+    /// summed); mapping rows sharing a key are summed. When only some of a key's mapping rows have a value for a year,
+    /// no row is produced and the key/year is returned in <c>Partials</c>.</summary>
+    internal static (List<ExposureRow> Rows, List<(string Mode, string VehicleClass, int Year)> Partials) Aggregate(
+        IEnumerable<(string Label, int Year, double Value)> cells, IReadOnlyList<RowMap> map, string metric, double unitMultiplier)
     {
-        var byLabel = map.ToLookup(m => CleanLabel(m.RowLabel), StringComparer.OrdinalIgnoreCase);
-        var sums = new Dictionary<(string, int, string?, string?), (double Sum, string Prov)>();
-        foreach (var (label, year, value) in cells)
-            foreach (var m in byLabel[label])
+        var cellList = cells.ToList();
+        var labels = cellList.Select(c => c.Label).Distinct().ToList();
+        // per distinct mapping label: the sheet labels it matches
+        var matches = map.Select(m => m.RowLabel).Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(l => l, l => labels.Where(x => LabelMatches(x, l)).ToHashSet(), StringComparer.OrdinalIgnoreCase);
+
+        var rows = new List<ExposureRow>();
+        var partials = new List<(string, string, int)>();
+        var keys = map.GroupBy(m => (m.Mode, m.VehicleClass, m.RegulationClass));
+        foreach (var key in keys.OrderBy(k => k.Key.Mode).ThenBy(k => k.Key.VehicleClass).ThenBy(k => k.Key.RegulationClass))
+        {
+            var mapRows = key.GroupBy(m => m.RowLabel, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+            var years = cellList.Where(c => mapRows.Any(m => matches[m.RowLabel].Contains(c.Label)))
+                .Select(c => c.Year).Distinct().Order();
+            foreach (var year in years)
             {
-                var key = (m.Mode, year, m.VehicleClass, m.RegulationClass);
-                sums[key] = (sums.GetValueOrDefault(key).Sum + value, sums.TryGetValue(key, out var seen) ? seen.Prov : m.Provenance);
+                var sums = mapRows.Select(m => cellList.Where(c => c.Year == year && matches[m.RowLabel].Contains(c.Label))
+                    .Select(c => c.Value).ToList()).ToList();
+                if (sums.Any(v => v.Count == 0))
+                {
+                    partials.Add((key.Key.Mode, key.Key.VehicleClass ?? "", year));
+                    continue;
+                }
+                rows.Add(new ExposureRow(key.Key.Mode, year, key.Key.VehicleClass, key.Key.RegulationClass, metric,
+                    sums.Sum(v => v.Sum()) * unitMultiplier, mapRows[0].Provenance));
             }
-        foreach (var (k, v) in sums.OrderBy(e => e.Key.Item1).ThenBy(e => e.Key.Item2))
-            yield return new ExposureRow(k.Item1, k.Item2, k.Item3, k.Item4, metric, v.Sum * unitMultiplier, v.Prov);
+        }
+        return (rows, partials);
+    }
+
+    /// <summary>The sheet label equals the mapping label, optionally followed by footnote letters glued on
+    /// ("Motorcycleb", "...wheel basea,b", "Otherg, h"). Comparison ignores case in the base part only.</summary>
+    internal static bool LabelMatches(string sheetLabel, string mapLabel)
+    {
+        var m = CleanLabel(mapLabel);
+        if (!sheetLabel.StartsWith(m, StringComparison.OrdinalIgnoreCase)) return false;
+        var rest = sheetLabel[m.Length..];
+        return rest.Length == 0 || FootnoteSuffix().IsMatch(rest);
     }
 
     internal static IReadOnlyList<RowMap> LoadMap(string path)
@@ -169,20 +210,9 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
 
     private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
-    /// <summary>Trims, collapses whitespace and strips footnote markers (trailing ",a" style letters and
-    /// superscript digits).</summary>
-    internal static string CleanLabel(string raw)
-    {
-        var s = Whitespace().Replace(raw, " ").Trim();
-        string prev;
-        do
-        {
-            prev = s;
-            s = TrailingSuperscripts().Replace(s, "");
-            s = TrailingFootnoteLetters().Replace(s, "").TrimEnd();
-        } while (s != prev);
-        return s;
-    }
+    /// <summary>Trims, collapses whitespace and strips trailing superscript footnote marks.</summary>
+    internal static string CleanLabel(string raw) =>
+        TrailingSuperscripts().Replace(Whitespace().Replace(raw, " ").Trim(), "").TrimEnd();
 
     private static bool TryYear(IXLCell cell, out int year)
     {
@@ -210,5 +240,5 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
 
     [GeneratedRegex(@"\s+")] private static partial Regex Whitespace();
     [GeneratedRegex(@"[²³¹⁰-₟]+$")] private static partial Regex TrailingSuperscripts();
-    [GeneratedRegex(@"\s*,\s*[a-z]$")] private static partial Regex TrailingFootnoteLetters();
+    [GeneratedRegex(@"^[\s,]*[a-z](\s*,\s*[a-z])*$")] private static partial Regex FootnoteSuffix();
 }

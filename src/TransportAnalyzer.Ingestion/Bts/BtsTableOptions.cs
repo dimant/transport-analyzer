@@ -16,6 +16,8 @@ public sealed class BtsTableOptions
     public string MappingFile { get; set; } = "";
     /// <summary>Drop folder holding the manually downloaded xlsx; set from <c>Inbox:Root</c> at registration.</summary>
     public string InboxDir { get; set; } = "";
+    /// <summary>Worksheet holding the table; the downloads also carry a graph sheet and older editions.</summary>
+    public string SheetName { get; set; } = "";
     /// <summary>Table title used in the "file missing" message.</summary>
     public string TableLabel { get; set; } = "";
 
@@ -26,6 +28,7 @@ public sealed class BtsTableOptions
         Name = "BTS National Transportation Statistics, Table 1-40 U.S. Passenger-Miles",
         Metric = "passenger_miles",
         MappingFile = "bts-passenger-miles.csv",
+        SheetName = "1-40",
         TableLabel = "NTS Table 1-40 'U.S. Passenger-Miles'",
     };
 
@@ -36,6 +39,7 @@ public sealed class BtsTableOptions
         Name = "BTS National Transportation Statistics, Table 1-35 U.S. Vehicle-Miles",
         Metric = "vehicle_miles",
         MappingFile = "bts-vehicle-miles.csv",
+        SheetName = "1-35",
         TableLabel = "NTS Table 1-35 'U.S. Vehicle-Miles'",
     };
 }
