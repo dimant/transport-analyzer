@@ -1,0 +1,96 @@
+import * as Plot from '@observablehq/plot'
+import type { Cell, HeatmapSpec, IntervalSpec } from '../stats/method'
+import { formatValue } from './format'
+
+type Row = Record<string, Cell>
+
+const num = (c: Cell | undefined): number | null => (typeof c === 'number' && Number.isFinite(c) ? c : null)
+const label = (c: Cell | undefined) => (c === null || c === undefined ? '(none)' : String(c))
+
+function wrap(plot: Element | SVGSVGElement | HTMLElement, notes: string[]): Element {
+  const fig = plot.tagName.toLowerCase() === 'figure' ? plot : document.createElement('figure')
+  if (fig !== plot) fig.appendChild(plot)
+  if (notes.length) {
+    const cap = document.createElement('figcaption')
+    cap.textContent = notes.join('; ')
+    fig.appendChild(cap)
+  }
+  return fig
+}
+
+export function renderPlot(spec: HeatmapSpec | IntervalSpec, opts: { width: number }): Element {
+  return spec.kind === 'heatmap' ? heatmap(spec, opts.width) : intervals(spec, opts.width)
+}
+
+function heatmap(spec: HeatmapSpec, width: number): Element {
+  const val = (d: Row) => num(d[spec.fill])
+  const usable = (d: Row) => {
+    const v = val(d)
+    return v !== null && (!spec.logScale || v > 0)
+  }
+  const title = (d: Row) => `${label(d[spec.x])} / ${label(d[spec.y])}: ${formatValue(val(d), 'number')}`
+  const text = (d: Row) => formatValue(val(d), 'number')
+  const build = (legend: boolean) => Plot.plot({
+    width,
+    marginLeft: 100,
+    x: { label: spec.x },
+    y: { label: spec.y },
+    color: { type: spec.logScale ? 'log' : 'linear', legend, label: spec.fillLabel, scheme: 'blues' },
+    marks: [
+      Plot.cell(spec.data.filter((d) => !usable(d)), { x: spec.x, y: spec.y, fill: '#d0d0d0', title }),
+      Plot.cell(spec.data.filter(usable), { x: spec.x, y: spec.y, fill: (d: Row) => val(d), title }),
+      Plot.text(spec.data, { x: spec.x, y: spec.y, text, title, fontSize: 11 }),
+    ],
+  })
+  let plot: Element
+  try {
+    plot = build(true)
+  } catch {
+    // the ramp legend is drawn on a canvas; environments without one (jsdom) get the plot without it
+    plot = build(false)
+  }
+  return wrap(plot, [])
+}
+
+function intervals(spec: IntervalSpec, width: number): Element {
+  const notes: string[] = []
+  const rows = spec.data.filter((d) => num(d[spec.y]) !== null)
+  const missing = spec.data.length - rows.length
+  if (missing > 0) notes.push(`${missing} ${missing === 1 ? 'row' : 'rows'} without a rate (no exposure)`)
+
+  const positives: number[] = []
+  for (const d of rows) for (const k of [spec.lo, spec.y, spec.hi]) {
+    const v = num(d[k])
+    if (v !== null && v > 0) positives.push(v)
+  }
+  const floor = positives.length ? Math.min(...positives) / 10 : 0.1
+  const clampOn = spec.logScale
+  const clamp = (v: number | null) => (v === null ? null : clampOn && v <= 0 ? floor : v)
+  const isClamped = (d: Row) => clampOn && [spec.lo, spec.y, spec.hi].some((k) => {
+    const v = num(d[k])
+    return v !== null && v <= 0
+  })
+  if (rows.some(isClamped)) notes.push('values of 0 drawn at the floor')
+
+  const title = (d: Row) =>
+    `${label(d[spec.x])}${spec.series ? ` · ${label(d[spec.series])}` : ''}\n` +
+    `${spec.yLabel}: ${formatValue(num(d[spec.y]), 'rate')} (${formatValue(num(d[spec.lo]), 'rate')} – ${formatValue(num(d[spec.hi]), 'rate')})`
+  const color = spec.series ? (d: Row) => label(d[spec.series!]) : 'steelblue'
+  const x = (d: Row) => label(d[spec.x])
+  const y = (d: Row) => clamp(num(d[spec.y]))
+  const solid = rows.filter((d) => !(num(d[spec.y])! <= 0 && clampOn))
+  const hollow = rows.filter((d) => num(d[spec.y])! <= 0 && clampOn)
+
+  const plot = Plot.plot({
+    width,
+    x: { type: 'point', label: spec.x },
+    y: { type: spec.logScale ? 'log' : 'linear', label: spec.yLabel, grid: true },
+    color: { legend: Boolean(spec.series) },
+    marks: [
+      Plot.ruleX(rows, { x, y1: (d: Row) => clamp(num(d[spec.lo])), y2: (d: Row) => clamp(num(d[spec.hi])), stroke: color, title }),
+      Plot.dot(solid, { x, y, fill: color, stroke: color, title }),
+      Plot.dot(hollow, { x, y, fill: 'none', stroke: color, title }),
+    ],
+  })
+  return wrap(plot, notes)
+}

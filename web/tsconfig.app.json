@@ -5,6 +5,7 @@
     "target": "es2023",
     "module": "esnext",
     "types": ["svelte", "vite/client"],
+    "paths": { "@observablehq/plot": ["./node_modules/@observablehq/plot/src/index.d.ts"] },
     "allowArbitraryExtensions": true,
     "noEmit": true,
     "strict": true,
