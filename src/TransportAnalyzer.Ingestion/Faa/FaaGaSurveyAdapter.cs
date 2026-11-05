@@ -187,7 +187,8 @@ public sealed partial class FaaGaSurveyAdapter(HttpClient http, IOptions<FaaGaSu
 
     /// <summary>Maps cells to exposure keys. Mapping rows sharing (table, mode, vehicle_class, regulation_class) are combined in
     /// file order (<c>value</c>/<c>add</c> add, <c>subtract</c> subtracts). If a component has no value for a year the key/year
-    /// is dropped and counted as <c>partial_sum:{mode}/{vehicle_class}/{regulation_class}/{year}</c>.</summary>
+    /// is dropped and counted as <c>partial_sum:{mode}/{vehicle_class}/{regulation_class}/{year}</c>. Two groups producing
+    /// the same exposure key (mode, year, vehicle_class, regulation_class, metric) throw <see cref="InvalidDataException"/>.</summary>
     internal static FaaAggregate Aggregate(IEnumerable<FaaCell> cells, IReadOnlyList<FaaMap> map, string metric,
         double unitMultiplier, ISet<int>? years = null)
     {
@@ -235,6 +236,17 @@ public sealed partial class FaaGaSurveyAdapter(HttpClient http, IOptions<FaaGaSu
                     se = Math.Sqrt(parts.Sum(x => Math.Pow(x.Cells[year].Value * unitMultiplier * x.Cells[year].SePct!.Value / 100.0, 2)));
                 rows.Add(new ExposureRow(mode, year, key.Key.VehicleClass, key.Key.RegulationClass, metric, value, provenance, se, assumptions));
             }
+        }
+
+        // Two mapping groups (e.g. from different tables) writing the same exposure key would silently overwrite each other.
+        var duplicate = rows.GroupBy(r => (r.Mode, r.Year, r.VehicleClass, r.RegulationClass, r.Metric))
+            .FirstOrDefault(g => g.Count() > 1);
+        if (duplicate is not null)
+        {
+            var (m, y, vc, rc, mt) = duplicate.Key;
+            throw new InvalidDataException(
+                $"More than one mapping group produces exposure key (mode={m}, year={y}, vehicle_class={vc ?? "null"}, " +
+                $"regulation_class={rc ?? "null"}, metric={mt}).");
         }
         return new FaaAggregate(rows, unmapped);
     }

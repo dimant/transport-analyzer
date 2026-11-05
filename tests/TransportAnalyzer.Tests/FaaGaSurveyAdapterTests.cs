@@ -183,6 +183,23 @@ public class FaaGaSurveyAdapterTests(PostgresFixture db) : IDisposable
     }
 
     [Fact]
+    public void Parse_TwoMappingGroupsWithSameExposureKey_ThrowsNamingKey()
+    {
+        // Different tables, same (mode, vehicle_class, regulation_class): both would write the same exposure key.
+        IReadOnlyList<FaaMap> map =
+        [
+            new("1.3", "Gliders", 1, "value", "aviation", "glider", null, "reported"),
+            new("1.4", "Personal", 1, "value", "aviation", "glider", null, "reported"),
+        ];
+        using var wb = Workbook();
+        var ex = Assert.Throws<InvalidDataException>(() => FaaGaSurveyAdapter.Parse(wb, map, Sheets, 1000));
+        Assert.Contains("aviation", ex.Message);
+        Assert.Contains("glider", ex.Message);
+        Assert.Contains("year=2019", ex.Message); // first (lowest) duplicated year
+        Assert.Contains("flight_hours", ex.Message);
+    }
+
+    [Fact]
     public void Parse_NoSheet_Throws()
     {
         using var wb = new XLWorkbook();
