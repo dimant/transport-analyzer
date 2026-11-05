@@ -90,7 +90,8 @@ public class ExposureEndpointsTests(ExposureFixture fx) : IClassFixture<Exposure
         Assert.Equal(2022, heavy.GetProperty("year").GetInt32());
         Assert.Equal(JsonValueKind.Null, heavy.GetProperty("regulationClass").ValueKind);
         Assert.Equal(0, heavy.GetProperty("numerator").GetInt64());
-        Assert.Equal(["mode", "year", "vehicleClass", "regulationClass", "numerator"],
+        Assert.Equal("no_exposure", heavy.GetProperty("reason").GetString());
+        Assert.Equal(["mode", "year", "vehicleClass", "regulationClass", "numerator", "reason"],
             heavy.EnumerateObject().Select(p => p.Name));
     }
 

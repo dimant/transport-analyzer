@@ -124,14 +124,13 @@ public static class ExposureEndpoints
                 from exposure
                 where source_id = @exposureSource and metric = @metric and year between @fromYear and @toYear
                 """, new { exposureSource, metric, fromYear, toYear }, cancellationToken: ct));
-            var parents = (await conn.QueryAsync<(string Code, string? ParentCode)>(new CommandDefinition(
-                    "select code, parent_code from vocabulary where attribute = 'vehicle_class'", cancellationToken: ct)))
-                .ToDictionary(p => p.Code, p => p.ParentCode);
+            var vehicleClassParents = await ParentsAsync(conn, VehicleClass, ct);
+            var regulationClassParents = await ParentsAsync(conn, RegulationClass, ct);
 
             var result = RateJoiner.Join(numerators,
                 exposure.Select(e => new ExposureCell(new RateKey(e.Mode, e.Year, e.VehicleClass, e.RegulationClass),
                     e.Value, e.SourceId, e.Provenance)),
-                parents, groupBy.Contains(VehicleClass), groupBy.Contains(RegulationClass));
+                vehicleClassParents, regulationClassParents, groupBy.Contains(VehicleClass), groupBy.Contains(RegulationClass));
 
             return Results.Ok(new
             {
@@ -150,11 +149,20 @@ public static class ExposureEndpoints
                     vehicleClass = u.Key.VehicleClass,
                     regulationClass = u.Key.RegulationClass,
                     numerator = u.Value,
+                    reason = u.Reason,
                 }),
                 unattributed = await UnattributedAsync(conn, from, to, ct),
             });
         });
     }
+
+    /// <summary>Code to parent code for one vocabulary attribute.</summary>
+    private static async Task<Dictionary<string, string?>> ParentsAsync(NpgsqlConnection conn, string attribute,
+        CancellationToken ct) =>
+        (await conn.QueryAsync<(string Code, string? ParentCode)>(new CommandDefinition(
+            "select code, parent_code from vocabulary where attribute = @attribute", new { attribute },
+            cancellationToken: ct)))
+        .ToDictionary(p => p.Code, p => p.ParentCode);
 
     /// <summary>Numerator cells at (mode, year, vehicle_class, regulation_class) from the aggregate query builder.</summary>
     private static async Task<List<NumeratorCell>> NumeratorsAsync(NpgsqlConnection conn, DateOnly from, DateOnly to,
