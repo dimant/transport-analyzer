@@ -196,6 +196,24 @@ The browser UI lives in `web/` (Vite + Svelte 5 + TypeScript).
 
 `wwwroot/` is generated and not committed. `docker compose up -d --build` builds the frontend automatically.
 
+### Experiments
+
+An experiment is a query, a method, its column bindings and its parameters. Six presets ship with the app (airlines vs road
+by year and combined, GA by aircraft class, road by vehicle class, an aviation heatmap, a road crosstab); load one from the
+experiment list. Your own experiments are saved in the browser's storage only (`localStorage`): they are not sent to the
+server and do not follow you to another browser. Export an experiment as JSON to keep or share it, and import it again
+later. The server counts; the browser does the statistics (rates with exact Garwood intervals, crosstabs, heatmaps).
+Every rate is shown with its interval, its exposure source and its provenance.
+
+### Adding a method
+
+A method is a module in `web/src/stats/` that implements `Method` (`web/src/stats/method.ts`): `id`, `name`, `inputs`,
+`params`, `run(table, bindings, params)` and `render(result)`. Append it to `methods` in `web/src/stats/registry.ts`. The UI
+builds its column pickers, parameter controls and result views from the method's declared inputs, params and render specs,
+so no UI change is needed. `web/src/stats/` may not import anything outside itself (a test checks this).
+
+To run the presets against a live API: `cd web && TA_API=http://localhost:8080 npm test -- presets.live` (skipped without `TA_API`).
+
 ## Tests
 
 ```sh
@@ -207,4 +225,5 @@ The tests start PostgreSQL 17 through Testcontainers, so Docker must be running.
 ## Verification
 
 Real-data checks are in [docs/verification/plan-1.md](docs/verification/plan-1.md) (FARS and BTS) and
-[docs/verification/plan-2.md](docs/verification/plan-2.md) (NTSB, FAA survey, aviation rates).
+[docs/verification/plan-2.md](docs/verification/plan-2.md) (NTSB, FAA survey, aviation rates) and
+[docs/verification/plan-3.md](docs/verification/plan-3.md) (browser app, presets).

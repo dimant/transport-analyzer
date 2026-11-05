@@ -14,12 +14,12 @@ Items found during plan 1 that were deliberately deferred. Each names the plan w
 
 ## Plan 3 (frontend, stats library)
 
-- **Rewrite vocabulary descriptions.** The descriptions in `data/vocabulary.csv` are placeholders. The UI shows them on hover; `light_duty` in particular must explain that it is cars plus light trucks combined, as FHWA/BTS report it since 2007.
-- **Selecting nulls.** Aggregate filters cannot select null dimension values, but null groups appear in results. Decide whether the UI needs `f.<dim>=null`.
-- **Zero-event exposure cells.** A class/year with exposure but no events at all produces no `/api/rates` row, so its 0/x rate is invisible.
-- **Regulation-class fallback.** When grouping rates by regulation class only, cells can fall back to the mode total. This is what lets Part 121 be compared with all road travel, but the asymmetry with the vehicle-class guard should be shown in the UI.
-- **JSON conventions.** Object keys are camelCase. Tabular `columns` keep snake_case whitelist names. Data keys such as `unknown:vehicle_class` are opaque strings. BTS sources report `mode: "multi"`, which is not a vocabulary code.
-- **Run records before 2026-11-04** keep PascalCase `raw_files` / `parameters`.
+Done in plan 3 (see `docs/verification/plan-3.md`):
+- **Vocabulary descriptions** are real; the UI shows them on hover, and `light_duty` says it is cars plus light trucks combined, as FHWA/BTS report it since 2007.
+- **Regulation-class fallback.** Every rate row shows its `join_level` beside the rate, so the Part 121 vs all-road comparison (`regulation_class` against `mode`) is visible. The Part 121 presets also say that cargo is included.
+- **JSON conventions.** The client reads `columns` for names and camelCase keys for `unmatched` / `unattributed`. Run records before 2026-11-04 are not shown by the UI.
+
+Moved to "Later" below: selecting nulls, zero-event exposure cells, NTSB UTC dates for day/hour views.
 
 ## User review pending (accepted 2026-11-05)
 
@@ -38,13 +38,16 @@ Plan 2 closed these plan-1 items: the empty-FARS-year guard, mixed granularity i
 - **`data/mappings/ntsb.csv` choices accepted as proposed**, including the Step 4 additions from `docs/verification/plan-2.md`: `AIR::121` and `AIR::129` → `airliner`, `AIR::091` → `light_aircraft`, `091:UNK` → `private`. Some `AIR::091` airplanes may be turbine aircraft.
 - **`data/mappings/fars.csv` choices accepted as proposed** (listed under "User review pending" above).
 
-### Plan 3 (frontend)
+### Plan 3 (frontend), all handled in the UI
 - **NTSB dates are UTC.** NTSB `occurred_on` is the UTC date, while FARS dates are local. Day-of-week and hour views must say so, or filter by source.
 - **Rates labels and cases.** `/api/rates` `join_level` and `unmatched.reason` values are listed in the README. Aviation rates by class need `groupBy=vehicle_class,regulation_class`, because GA exposure exists only under `general_aviation`.
 - **Sample key columns.** `/api/events/sample` rows lead with `source_id, source_key, vehicle_no`, so a sampled row can be linked back to its event. Samples stay stable across re-ingests.
 - **Column order.** `Dimensions.All` is a dictionary. Clients should read `columns` rather than assume a fixed column order.
 
 ### Later
+- **Selecting nulls.** Aggregate filters cannot select null dimension values, but null groups appear in results (the UI shows them as `(none)`). Decide whether to add `f.<dim>=null`.
+- **Zero-event exposure cells.** A class/year with exposure but no events at all produces no `/api/rates` row, so its 0/x rate is invisible.
+- **NTSB dates are UTC** (from the Plan 3 notes above): future day-of-week and hour views must say so, or filter by source. No current view uses them.
 - **Remaining mixed-granularity gap.** The guard only recognises a child that was matched exactly. A sibling that reaches that child by dropping a dimension to null is not caught. No current data can trigger this; it becomes reachable only if highway exposure gains regulation-class rows.
 - **Memory after NTSB ingest.** The app holds about 694 MiB after an NTSB ingest, because CsvStager buffers each whole table and the GC then keeps the heap. Fix by streaming the decode, or set `DOTNET_GCConserveMemory`.
 - **NTSB Enterprise API.** The MDB download moves to the NTSB Enterprise API on 2027-04-05. Swap the adapter behind `IMdbExporter` and `NtsbAdapter.FetchAsync` before then.
