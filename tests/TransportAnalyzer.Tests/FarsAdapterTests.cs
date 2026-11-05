@@ -274,6 +274,27 @@ public class FarsAdapterTests(PostgresFixture db) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Run_RecordsUnknownCountsPerAttribute()
+    {
+        var runId = await IngestAsync();
+        await AssertSucceededAsync(runId);
+
+        var run = await RowAsync($"select row_counts::text rc from ingest_run where ingest_run_id = '{runId}'");
+        var rc = JsonSerializer.Deserialize<Dictionary<string, long>>((string)run["rc"]!)!;
+        // Only the heavy truck (2022-10003 vehicle 2) has a maintenance regime; the two cars and the pickup do not.
+        Assert.Equal(3, rc["unknown:maintenance_regime"]);
+        Assert.Equal(0, rc["unknown:vehicle_class"]);
+        Assert.Equal(4, rc["vehicle"]);
+        var actual = await RowAsync($"""
+            select count(*) filter (where operator_type = 'unknown') ot,
+                   count(*) filter (where regulation_class = 'unknown') rc
+            from vehicle where ingest_run_id = '{runId}'
+            """);
+        Assert.Equal((long)actual["ot"]!, rc["unknown:operator_type"]);
+        Assert.Equal((long)actual["rc"]!, rc["unknown:regulation_class"]);
+    }
+
+    [Fact]
     public async Task Mappings_AllCodesExistInVocabulary()
     {
         var missing = await RowsAsync("""

@@ -44,6 +44,9 @@ public class IngestRunner(string connectionString, IRawStore raw, ILogger? logge
             await using var tx = await conn.BeginTransactionAsync(ct);
             await a.StageAsync(files, conn, p, ct);
             result = await a.NormalizeAsync(conn, runId, p, ct);
+            // Inside the transaction: the counts describe exactly the rows this commit makes visible, and a
+            // counting failure fails the run instead of leaving a succeeded run without its quality report.
+            result = result with { RowCounts = await WithUnknownCountsAsync(conn, runId, result.RowCounts, ct) };
             await tx.CommitAsync(ct);
         }
         catch (Exception ex)
@@ -72,6 +75,29 @@ public class IngestRunner(string connectionString, IRawStore raw, ILogger? logge
             logger?.LogError(finishEx,
                 "Ingest run {RunId} committed but its succeeded status could not be recorded", runId);
         }
+    }
+
+    /// <summary>Harmonized vehicle attributes whose <c>unknown</c> share is reported per run (spec section 5).</summary>
+    private static readonly string[] VehicleAttributes =
+        ["vehicle_class", "operator_type", "regulation_class", "maintenance_regime"];
+
+    /// <summary>Adds <c>"unknown:{attribute}"</c> counts over the vehicles stamped with this run, plus a
+    /// <c>"vehicle"</c> total when the adapter gave none. A run that wrote no vehicles adds nothing.</summary>
+    private static async Task<IReadOnlyDictionary<string, long>> WithUnknownCountsAsync(NpgsqlConnection conn, Guid runId,
+        IReadOnlyDictionary<string, long> rowCounts, CancellationToken ct)
+    {
+        var filters = string.Join(", ", VehicleAttributes.Select(c => $"count(*) filter (where {c} = 'unknown')"));
+        await using var cmd = new NpgsqlCommand($"select count(*), {filters} from vehicle where ingest_run_id = @run", conn);
+        cmd.Parameters.AddWithValue("run", runId);
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        await r.ReadAsync(ct);
+        var total = r.GetInt64(0);
+        if (total == 0) return rowCounts;
+        var counts = new Dictionary<string, long>(rowCounts);
+        counts.TryAdd("vehicle", total);
+        for (var i = 0; i < VehicleAttributes.Length; i++)
+            counts[$"unknown:{VehicleAttributes[i]}"] = r.GetInt64(i + 1);
+        return counts;
     }
 
     /// <summary>Marks every leftover 'running' row as failed (queued or in flight when the process stopped).</summary>

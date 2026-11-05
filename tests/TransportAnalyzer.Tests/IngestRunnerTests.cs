@@ -71,6 +71,19 @@ public class IngestRunnerTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task Run_SourceWithoutVehicles_AddsNoUnknownCounts()
+    {
+        var runner = new IngestRunner(db.ConnectionString, new RawStore(Path.Combine(Path.GetTempPath(), "ta-raw-" + Guid.NewGuid().ToString("N"))));
+        var id = await runner.RunAsync(new FakeAdapter("fake-novehicles"), new IngestParameters(null), CancellationToken.None);
+        await using var conn = new NpgsqlConnection(db.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("select row_counts::text from ingest_run where ingest_run_id = @id", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        var rc = JsonSerializer.Deserialize<Dictionary<string, long>>((string)(await cmd.ExecuteScalarAsync())!)!;
+        Assert.Equal(new Dictionary<string, long> { ["event"] = 0 }, rc);
+    }
+
+    [Fact]
     public async Task Run_Failure_RecordsFailedAndRollsBack()
     {
         var runner = new IngestRunner(db.ConnectionString, new RawStore(Path.GetTempPath()));
