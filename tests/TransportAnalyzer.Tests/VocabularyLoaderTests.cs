@@ -148,4 +148,16 @@ public class VocabularyLoaderTests : IDisposable
     [Fact]
     public void RealDataFiles_AreValid() =>
         VocabularyLoader.Read(Path.Combine(AppContext.BaseDirectory, "data"));
+
+    [Fact]
+    public void Vocabulary_DescriptionsAreNotPlaceholders()
+    {
+        var rows = VocabularyLoader.Read(Path.Combine(AppContext.BaseDirectory, "data")).Vocabulary;
+        Assert.Equal(39, rows.Count);
+        foreach (var r in rows)
+        {
+            Assert.DoesNotContain(" as a shared ", r.Description);
+            Assert.True(r.Description.Length >= 30, $"{r.Attribute}/{r.Code} description is too short");
+        }
+    }
 }
