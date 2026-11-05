@@ -1,36 +1,36 @@
 attribute,code,label,description,parent_code
 vehicle_class,light_duty,Light duty,"Cars and light trucks combined, the way FHWA and BTS report vehicle-miles and passenger-miles since 2007. Rates for passenger cars and light trucks roll up to this class.",
-vehicle_class,passenger_car,Passenger car,"Passenger cars, from FARS body types 1 to 13. FARS counts them separately, but exposure after 2006 exists only for light duty, so rates roll up to light duty.",light_duty
-vehicle_class,light_truck,Light truck,"Light trucks, from FARS body types 14 to 49. FARS counts them separately, but exposure after 2006 exists only for light duty, so rates roll up to light duty.",light_duty
-vehicle_class,motorcycle,Motorcycle,"Motorcycles and similar two-wheeled motor vehicles, from FARS body types 80 to 89.",
-vehicle_class,bus,Bus,"Buses of all kinds, from FARS body types 50 to 59. Buses are classed as commercial road vehicles.",
-vehicle_class,heavy_truck,Heavy truck,"Medium and heavy trucks, from FARS body types 60 to 79. They are classed as commercial road vehicles.",
+vehicle_class,passenger_car,Passenger car,"Passenger cars (FARS automobile body types, 1 to 13). FARS counts them separately, but exposure after 2006 exists only for light duty, so rates roll up to light duty.",light_duty
+vehicle_class,light_truck,Light truck,"Light trucks: FARS utility vehicles (SUVs), van-based light trucks, light conventional (pickup) trucks and other light trucks (body types 14 to 49). FARS counts them separately, but exposure after 2006 exists only for light duty, so rates roll up to light duty.",light_duty
+vehicle_class,motorcycle,Motorcycle,"Motorcycles, mopeds, scooters and similar motored cycles, including three-wheeled ones (FARS body types 80 to 89).",
+vehicle_class,bus,Bus,"Buses of all kinds (FARS body types 50 to 59).",
+vehicle_class,heavy_truck,Heavy truck,"Medium and heavy trucks (FARS body types 60 to 79).",
 vehicle_class,light_aircraft,Light aircraft,"Piston and electric airplanes in NTSB data, plus Part 91 airplanes with no engine record. Some of the airplanes with no engine record may be turbine aircraft.",
 vehicle_class,turboprop,Turboprop,"Turboprop airplanes, taken from the NTSB engine type. The FAA survey reports them as Turboprop.",
 vehicle_class,business_jet,Business jet,"Turbofan, turbojet and geared-turbofan airplanes that are not operated under Part 121 or 129. The FAA survey reports them as Turbojet.",
 vehicle_class,airliner,Airliner,"Turbofan or turbojet airplanes operated under Part 121 or 129, plus Part 121 or 129 airplanes with no engine record. Part 121 cargo airplanes are included.",
 vehicle_class,helicopter,Helicopter,"Helicopters and gyroplanes in NTSB data, and rotorcraft in the FAA survey.",
 vehicle_class,experimental,Experimental,"Amateur-built and other experimental-certificate aircraft. NTSB marks them by the homebuilt flag, which takes precedence over engine type, so they are not counted in other aircraft classes.",
-vehicle_class,other,Other,"Vehicles that fit no named class. On the road this is FARS body types 90 to 97; in aviation it is gliders, balloons, blimps, weight-shift, powered parachutes, ultralights, powered lift and rockets.",
-vehicle_class,unknown,Unknown,"Vehicles whose type is not recorded. On the road this is FARS body types 98 and 99.",
-operator_type,private,Private,"Operated for personal use rather than for hire. In NTSB data this is Part 91 personal or unrecorded use and non-U.S. non-commercial flights; on the road it is FARS special use 19 and vehicles with no special use.",
-operator_type,commercial,Commercial,"Operated for hire or business. On the road this is buses, heavy trucks and FARS special uses 1, 2, 3, 12 and 20 to 23; in aviation it is Parts 121, 125, 129, 133, 135 and 137, and Part 91 business-type uses such as instruction, executive and aerial work.",
-operator_type,government,Government,"Operated by a public body. In NTSB data this is public-use and armed-forces flights; on the road it is FARS special uses 4 to 8, 10, 11 and 24, unless a bus or heavy truck body type makes it commercial.",
-operator_type,unknown,Unknown,"Operator type not recorded or not decided by the source. In FARS this is special use 98 and 99.",
-regulation_class,road_private,Road private,"Road vehicles not identified as commercial. FARS decides this from operator use: no special use, or a private special use, and a body type that is not a bus or heavy truck.",
-regulation_class,road_commercial,Road commercial,"Road vehicles in commercial service. FARS decides this from body type (all buses and heavy trucks) or from FARS special uses 1, 2, 3, 12 and 20 to 23.",
-regulation_class,general_aviation,General aviation,"Part 91, on-demand Part 135, Part 137 and Part 133 flying together, as the FAA General Aviation and Part 135 Activity Survey counts them. Exposure exists only at this level, so rates by finer class need it as a grouping.",
-regulation_class,part_91,Part 91,"General operating and flight rules, covering private and corporate flying, including Part 91K fractional ownership. Counted within general aviation.",general_aviation
-regulation_class,part_121,Part 121,"Scheduled and supplemental air carrier operations with large aircraft, measured by BTS as domestic air carrier miles. Events include all-cargo flights, although the exposure is passenger-miles.",
+vehicle_class,other,Other,"Vehicles that fit no named class. On the road this is FARS other vehicles such as farm and construction equipment, ATVs and snowmobiles (body types 90 to 97); in aviation it is gliders, balloons, blimps, weight-shift, powered parachutes, ultralights, powered lift and rockets.",
+vehicle_class,unknown,Unknown,"Vehicles whose type is not recorded. On the road this is FARS unknown body types (98 and 99).",
+operator_type,private,Private,"Operated for personal use rather than for hire. In NTSB data this is Part 91 personal or unrecorded use and non-U.S. non-commercial flights; on the road it is a private special use or no special use at all.",
+operator_type,commercial,Commercial,"Operated for hire or business. On the road this is buses and medium or heavy trucks, plus taxi, school-bus, other bus and similar commercial FARS special uses. In aviation it is Parts 121, 125, 129, 133, 135 and 137, Part 91K, non-U.S. commercial flights, and Part 91 business-type uses such as instruction, executive and aerial work. A government use takes precedence on the road.",
+operator_type,government,Government,"Operated by a public body. In NTSB data this is public-use, armed-forces and firefighting flights. On the road it is the government and emergency FARS special uses (such as military, police, ambulance and fire), which take precedence over a bus or heavy truck body type.",
+operator_type,unknown,Unknown,"Operator type not recorded or not decided by the source. In FARS this is an unknown special use.",
+regulation_class,road_private,Road private,"Road vehicles with no special use or a private special use, and a body type that is not a bus or medium or heavy truck.",
+regulation_class,road_commercial,Road commercial,"Road vehicles in commercial service. FARS decides this first from body type (all buses and medium or heavy trucks), and otherwise from commercial special uses such as taxi, school bus and other bus.",
+regulation_class,general_aviation,General aviation,"Part 91, on-demand Part 135, Part 137 and Part 133 flying together, as the FAA General Aviation and Part 135 Activity Survey counts them. Flight hours by aircraft class exist only at this level; flight hours by Part exist without an aircraft class.",
+regulation_class,part_91,Part 91,"General operating and flight rules, covering private and corporate flying, including Part 91K. Counted within general aviation; its flight hours are derived from survey use rows.",general_aviation
+regulation_class,part_121,Part 121,"Air carrier operations under Part 121, measured by BTS as domestic air carrier miles. Events include all-cargo flights, although the passenger-mile exposure covers passengers only.",
 regulation_class,part_135,Part 135,"On-demand commuter and air taxi operations, counted within general aviation. Scheduled Part 135 service is classed separately.",general_aviation
 regulation_class,part_135_scheduled,Part 135 scheduled,"Scheduled commuter operations under Part 135, which the FAA survey does not cover, so no exposure exists for this class.",
 regulation_class,part_137,Part 137,"Agricultural aircraft operations such as crop dusting. Counted within general aviation.",general_aviation
 regulation_class,part_133,Part 133,"Rotorcraft external-load operations. Counted within general aviation.",general_aviation
-regulation_class,other,Other,"Regulations that are not separately classed. In NTSB data this is Parts 125, 129, 103, 107 and 437, public-use and armed-forces flights, and non-U.S. flights; road events with a government special use also land here.",
-regulation_class,unknown,Unknown,"Regulation not recorded. In NTSB data this is an empty or unknown regulation profile; in FARS it is special use 98 and 99.",
+regulation_class,other,Other,"Regulations that are not separately classed. In NTSB data this is Parts 125, 129, 103, 107 and 437, public-use and armed-forces flights, and non-U.S. flights; road vehicles with a government or emergency special use also land here, unless a bus or heavy truck body type makes them road commercial.",
+regulation_class,unknown,Unknown,"Regulation not recorded. In NTSB data this is an empty or unknown regulation profile; in FARS it is an unknown special use.",
 maintenance_regime,none,None,"No mandated maintenance or inspection. No current source mapping assigns this value.",
 maintenance_regime,state_inspection,State inspection,"Periodic inspection set by individual states, as for passenger vehicles. No current source mapping assigns this value.",
-maintenance_regime,mandated_periodic,Mandated periodic,"Federally mandated periodic maintenance or inspection. FARS assigns it to buses and heavy trucks; NTSB assigns it to Parts 91, 91K, 121, 125, 133, 135 and 137.",
+maintenance_regime,mandated_periodic,Mandated periodic,"Mandated periodic maintenance or inspection. FARS assigns it to buses and medium or heavy trucks; NTSB assigns it to Parts 91, 91K, 121, 125, 133, 135 and 137.",
 maintenance_regime,unknown,Unknown,"Maintenance regime not determined. FARS leaves cars, light trucks, motorcycles and other body types here, and NTSB uses it for regulations without a mapped regime.",
 mode,aviation,Aviation,"Air transport, including airliners, general aviation and helicopters. Events come from NTSB and exposure from BTS and the FAA survey.",
 mode,highway,Highway,"Road transport, including cars, trucks, buses and motorcycles. Events come from FARS and exposure from BTS.",
