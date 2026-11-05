@@ -23,6 +23,11 @@ On startup the app migrates the database and loads `data/vocabulary.csv` and `da
 
 **FARS** is downloaded by the app from static.nhtsa.gov.
 
+**NTSB** (`ntsb`, aviation accidents and incidents from 2008 on) is downloaded by the app from data.ntsb.gov as
+`avall.zip`, an Access database read with mdbtools (installed in the Docker image; `mdb-tables` and `mdb-export` must be
+on `PATH` when running outside Docker). Every run downloads and stages the whole snapshot; `?years=` limits which
+years are written to events.
+
 **BTS** tables have to be downloaded by hand, because bts.gov blocks automated clients. Save the xlsx download into the
 source's drop folder. The file name does not matter; the newest `*.xlsx` in the folder is used.
 
@@ -38,6 +43,7 @@ Files under `data/inbox/` are ignored by git.
 ```sh
 curl -X POST localhost:8080/api/admin/ingest/fars                    # FARS 2019-2023
 curl -X POST 'localhost:8080/api/admin/ingest/fars?years=2019,2020'  # chosen years
+curl -X POST localhost:8080/api/admin/ingest/ntsb                    # NTSB, every year in avall (2008 on)
 curl -X POST localhost:8080/api/admin/ingest/bts-passenger-miles
 curl -X POST localhost:8080/api/admin/ingest/bts-vehicle-miles
 ```

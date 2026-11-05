@@ -7,6 +7,7 @@ using TransportAnalyzer.Infrastructure;
 using TransportAnalyzer.Ingestion;
 using TransportAnalyzer.Ingestion.Bts;
 using TransportAnalyzer.Ingestion.Fars;
+using TransportAnalyzer.Ingestion.Ntsb;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +30,14 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddSingleton<ISourceAdapter>(sp => new FarsAdapter(
         sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(FarsAdapter)),
         sp.GetRequiredService<IOptions<FarsOptions>>()));
+
+    builder.Services.AddSingleton<IMdbExporter>(new MdbToolsExporter());
+    builder.Services.Configure<NtsbOptions>(builder.Configuration.GetSection("Sources:ntsb"));
+    builder.Services.AddHttpClient(nameof(NtsbAdapter), c => c.Timeout = TimeSpan.FromMinutes(30));
+    builder.Services.AddSingleton<ISourceAdapter>(sp => new NtsbAdapter(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(NtsbAdapter)),
+        sp.GetRequiredService<IMdbExporter>(),
+        sp.GetRequiredService<IOptions<NtsbOptions>>()));
 
     // BTS tables are downloaded by hand into {Inbox:Root}/{sourceId}/. Unset: the nearest data/inbox walking up
     // from the working directory (works for `dotnet run` in any project folder), else ./data/inbox.

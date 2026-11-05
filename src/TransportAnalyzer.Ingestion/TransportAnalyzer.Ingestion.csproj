@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Fars\fars-normalize.sql" LogicalName="TransportAnalyzer.Ingestion.Fars.fars-normalize.sql" />
+    <EmbeddedResource Include="Ntsb\ntsb-normalize.sql" LogicalName="TransportAnalyzer.Ingestion.Ntsb.ntsb-normalize.sql" />
   </ItemGroup>
 
   <ItemGroup>

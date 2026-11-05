@@ -1,0 +1,7 @@
+ev_id,ntsb_no,ev_type,ev_date,ev_time,ev_tmzn,ev_city,ev_state,ev_country,ev_year,ev_month,ev_highest_injury,inj_f_grnd,inj_m_grnd,inj_s_grnd,dec_latitude,dec_longitude
+"20220101X00001","WPR22FA001","ACC","01/15/22 00:00:00",1430,"UTC","Fresno","CA","USA",2022,1,"FATL",,,,36.776,-119.718
+"20220202X00002","DCA22IA002","INC","02/02/22 00:00:00",825,"UTC","Chicago","IL","USA",2022,2,"NONE",0,0,0,,
+"20220303X00003","ERA22FA003","ACC","03/03/22 00:00:00",1200,"UTC","Ocala","FL","USA",2022,3,"FATL",1,0,0,29.187,-82.14
+"20220404X00004","GAA22WA004","ACC","04/04/22 00:00:00",,,"Sao Paulo",,"BR",2022,4,"FATL",2,0,0,-23.55,-46.63
+"20220505X00005","CEN22FA005","ACC","05/05/22 00:00:00",900,"UTC","Juneau","AK","USA",2022,5,"FATL",0,0,0,91.5,-134.42
+"20220606X00006","WPR22LA006","ACC","06/06/22 00:00:00",1015,"UTC","Phoenix","AZ","USA",2022,6,"SERS",0,0,0,33.448,-200.0

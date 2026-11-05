@@ -1,0 +1,5 @@
+ev_id,Aircraft_Key,narr_accp,narr_accf,narr_cause
+"20220101X00001",1,"Preliminary: the airplane crashed after takeoff.","The pilot said ""the engine quit"" at 400 ft.
+The airplane impacted terrain.","Loss of control."
+"20220303X00003",2,"Second aircraft preliminary.","Second aircraft factual.","Failure to see and avoid."
+"20220303X00003",1,"Midair over Ocala.","import",
