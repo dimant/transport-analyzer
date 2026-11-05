@@ -6,6 +6,7 @@ using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
 using TransportAnalyzer.Ingestion;
 using TransportAnalyzer.Ingestion.Bts;
+using TransportAnalyzer.Ingestion.Faa;
 using TransportAnalyzer.Ingestion.Fars;
 using TransportAnalyzer.Ingestion.Ntsb;
 
@@ -50,6 +51,12 @@ if (!string.IsNullOrWhiteSpace(connectionString))
         options.InboxDir = Path.Combine(inboxRoot, options.SourceId);
         builder.Services.AddSingleton<ISourceAdapter>(new BtsNtsTableAdapter(options, btsDataRoot));
     }
+
+    builder.Services.Configure<FaaGaSurveyOptions>(builder.Configuration.GetSection("Sources:faa-ga-survey"));
+    builder.Services.AddHttpClient(nameof(FaaGaSurveyAdapter), c => c.Timeout = TimeSpan.FromMinutes(5));
+    builder.Services.AddSingleton<ISourceAdapter>(sp => new FaaGaSurveyAdapter(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(FaaGaSurveyAdapter)),
+        sp.GetRequiredService<IOptions<FaaGaSurveyOptions>>(), btsDataRoot));
 }
 
 var app = builder.Build();

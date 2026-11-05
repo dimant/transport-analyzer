@@ -225,7 +225,7 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
     internal static string CleanLabel(string raw) =>
         TrailingSuperscripts().Replace(Whitespace().Replace(raw, " ").Trim(), "").TrimEnd();
 
-    private static bool TryYear(IXLCell cell, out int year)
+    internal static bool TryYear(IXLCell cell, out int year)
     {
         year = 0;
         if (cell.IsEmpty()) return false;
@@ -240,7 +240,7 @@ public sealed partial class BtsNtsTableAdapter(BtsTableOptions o, string dataRoo
         return year is >= 1950 and <= 2100;
     }
 
-    private static bool TryNumber(IXLCell cell, out double value)
+    internal static bool TryNumber(IXLCell cell, out double value)
     {
         value = 0;
         if (cell.IsEmpty()) return false;

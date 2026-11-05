@@ -1,0 +1,18 @@
+table,row_label,occurrence,operation,mode,vehicle_class,regulation_class,provenance
+1.3,Piston: Total,1,value,aviation,light_aircraft,general_aviation,survey_estimate
+1.3,Turboprop: Total,1,value,aviation,turboprop,general_aviation,survey_estimate
+1.3,Turbojet: Total,1,value,aviation,business_jet,general_aviation,survey_estimate
+1.3,Rotorcraft: Total,1,value,aviation,helicopter,general_aviation,survey_estimate
+1.3,Experimental: Total,1,value,aviation,experimental,general_aviation,survey_estimate
+1.3,Gliders,1,value,aviation,other,general_aviation,survey_estimate
+1.3,Lighter-than-air,1,add,aviation,other,general_aviation,survey_estimate
+1.3,All Aircraft,1,value,aviation,,general_aviation,survey_estimate
+1.3,Special Light-sport,1,unmapped,,,,
+1.4,On-Demand FAR Part 135 Use Total,1,value,aviation,,part_135,survey_estimate
+1.4,Aerial Application Agriculture,1,value,aviation,,part_137,derived
+1.4,Aerial Application Other,1,add,aviation,,part_137,derived
+1.4,External Load,1,value,aviation,,part_133,derived
+1.4,General Aviation Use Total,1,value,aviation,,part_91,derived
+1.4,Aerial Application Agriculture,1,subtract,aviation,,part_91,derived
+1.4,Aerial Application Other,1,subtract,aviation,,part_91,derived
+1.4,External Load,1,subtract,aviation,,part_91,derived

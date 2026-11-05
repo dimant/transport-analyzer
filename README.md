@@ -38,6 +38,11 @@ source's drop folder. The file name does not matter; the newest `*.xlsx` in the 
 
 Files under `data/inbox/` are ignored by git.
 
+**FAA General Aviation Survey** (`faa-ga-survey`) supplies flight hours (`flight_hours`) for general aviation, by aircraft
+type (Table 1.3) and by use (Table 1.4, from which Part 91 / 137 / 133 hours are derived). The app downloads the
+chapter 1 xlsx from faa.gov. The file name changes every survey year: when a new edition is published, set
+`Sources:faa-ga-survey:Url` (appsettings.json, or `Sources__faa-ga-survey__Url`) to the new `...GASurveyCh1.xlsx` link.
+
 ## Ingest
 
 ```sh
@@ -46,6 +51,7 @@ curl -X POST 'localhost:8080/api/admin/ingest/fars?years=2019,2020'  # chosen ye
 curl -X POST localhost:8080/api/admin/ingest/ntsb                    # NTSB, every year in avall (2008 on)
 curl -X POST localhost:8080/api/admin/ingest/bts-passenger-miles
 curl -X POST localhost:8080/api/admin/ingest/bts-vehicle-miles
+curl -X POST localhost:8080/api/admin/ingest/faa-ga-survey          # FAA GA survey flight hours
 ```
 
 Each call returns `202` with `{"runId": ...}` and runs in the background. Poll the run log until the status is
