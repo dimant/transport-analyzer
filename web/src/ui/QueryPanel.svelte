@@ -12,14 +12,16 @@
     text: string
   }
 
-  let { query, vocabulary, sources, onrun }: {
+  let { query, vocabulary, sources, onrun, busy = false }: {
     query: Query
     vocabulary: Vocabulary
     sources: Source[]
     onrun: (q: Query) => void
+    busy?: boolean
   } = $props()
 
   const yearOf = (d: string) => Number(d.slice(0, 4))
+  // read once: the parent re-creates the panel (keyed) when an experiment replaces the query
   const first = (() => query)()
   let nextId = 0
   const rowsOf = (f: Filters): FilterRow[] =>
@@ -227,7 +229,7 @@
     {@render filters()}
   {/if}
 
-  <button type="submit" class="run">Run</button>
+  <button type="submit" class="run" disabled={busy}>Run</button>
 </form>
 
 <style>
