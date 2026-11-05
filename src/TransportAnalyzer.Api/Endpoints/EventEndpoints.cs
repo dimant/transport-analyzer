@@ -17,5 +17,16 @@ public static class EventEndpoints
             await conn.OpenAsync(ct);
             return Results.Ok(await parsed.Value.RunAsync(conn, ct));
         });
+
+        app.MapGet("/api/events/sample", async (HttpRequest request, CancellationToken ct) =>
+        {
+            var parsed = SampleQuery.Parse(request.Query);
+            if (!parsed.IsSuccess)
+                return Results.BadRequest(new { error = parsed.Error.error, parameter = parsed.Error.parameter });
+
+            await using var conn = new NpgsqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+            return Results.Ok(await parsed.Value.RunAsync(conn, ct));
+        });
     }
 }

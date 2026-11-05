@@ -78,22 +78,33 @@ public sealed class AggregateQuery
     /// <summary>Parses <c>grain, from, to, bucket, groupBy, f.{dimension}</c>. Other parameters are ignored.</summary>
     public static Result<AggregateQuery, (string error, string parameter)> Parse(IQueryCollection q)
     {
-        if (!TryParseDate(q["from"].ToString(), out var from))
-            return Fail("'from' must be an ISO date (yyyy-MM-dd)", "from");
-        if (!TryParseDate(q["to"].ToString(), out var to))
-            return Fail("'to' must be an ISO date (yyyy-MM-dd)", "to");
+        var scope = ParseScope(q);
+        if (!scope.IsSuccess) return Result<AggregateQuery, (string error, string parameter)>.Fail(scope.Error);
+        var (from, to, filters) = scope.Value;
 
         var grain = q["grain"].ToString();
         var bucket = q["bucket"].ToString();
         var groupBy = q["groupBy"].ToString()
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        return Create(grain.Length == 0 ? "event" : grain, from, to, bucket.Length == 0 ? "none" : bucket, groupBy, filters);
+    }
+
+    /// <summary>Parses the parts every query shares: <c>from</c>, <c>to</c> and the <c>f.{dimension}</c> filters
+    /// (unvalidated names; <see cref="Create"/> validates them).</summary>
+    internal static Result<(DateOnly From, DateOnly To, Dictionary<string, IReadOnlyList<string>> Filters), (string error, string parameter)>
+        ParseScope(IQueryCollection q)
+    {
+        if (!TryParseDate(q["from"].ToString(), out var from))
+            return Result<(DateOnly From, DateOnly To, Dictionary<string, IReadOnlyList<string>> Filters), (string error, string parameter)>.Fail(("'from' must be an ISO date (yyyy-MM-dd)", "from"));
+        if (!TryParseDate(q["to"].ToString(), out var to))
+            return Result<(DateOnly From, DateOnly To, Dictionary<string, IReadOnlyList<string>> Filters), (string error, string parameter)>.Fail(("'to' must be an ISO date (yyyy-MM-dd)", "to"));
         var filters = q.Keys
             .Where(k => k.StartsWith("f.", StringComparison.Ordinal))
             .ToDictionary(k => k[2..], k => (IReadOnlyList<string>)q[k]
                 .SelectMany(v => (v ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
                 .ToList());
-
-        return Create(grain.Length == 0 ? "event" : grain, from, to, bucket.Length == 0 ? "none" : bucket, groupBy, filters);
+        return (from, to, filters);
     }
 
     /// <summary>Builds a query in code. <paramref name="grain"/> is <c>event</c> or <c>vehicle</c>,
@@ -155,20 +166,13 @@ public sealed class AggregateQuery
     private static bool TryParseDate(string s, out DateOnly date) =>
         DateOnly.TryParseExact(s, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
 
-    public (string sql, DynamicParameters p) ToSql()
+    /// <summary>The <c>from … where …</c> fragment shared with <see cref="SampleQuery"/>; adds its bound parameters
+    /// (<c>from</c>, <c>to</c>, <c>f_*</c>) to <paramref name="p"/>.</summary>
+    internal string FromWhere(DynamicParameters p)
     {
-        var p = new DynamicParameters();
         p.Add("from", From);
         p.Add("to", To);
-
-        var select = new List<string>();
-        select.AddRange(GroupBy.Select(d => $"{d.Sql} as \"{d.Name}\""));
-        if (_bucketSql is not null) select.Add($"{_bucketSql} as \"{PeriodColumn}\"");
-        var keyCount = select.Count;
-        select.AddRange(Measures.Select(m => $"{m.Sql} as \"{m.Name}\""));
-
-        var sql = new StringBuilder("select ").AppendJoin(", ", select);
-        sql.Append(Grain == Grain.Event
+        var sql = new StringBuilder(Grain == Grain.Event
             ? " from event e"
             : " from vehicle v join event e on e.event_id = v.event_id" +
               " left join vocabulary vc on vc.attribute = 'vehicle_class' and vc.code = v.vehicle_class");
@@ -178,6 +182,21 @@ public sealed class AggregateQuery
             sql.Append($" and {dim.Sql} = any(@f_{dim.Name})");
             p.Add("f_" + dim.Name, values);
         }
+        return sql.ToString();
+    }
+
+    public (string sql, DynamicParameters p) ToSql()
+    {
+        var p = new DynamicParameters();
+
+        var select = new List<string>();
+        select.AddRange(GroupBy.Select(d => $"{d.Sql} as \"{d.Name}\""));
+        if (_bucketSql is not null) select.Add($"{_bucketSql} as \"{PeriodColumn}\"");
+        var keyCount = select.Count;
+        select.AddRange(Measures.Select(m => $"{m.Sql} as \"{m.Name}\""));
+
+        var sql = new StringBuilder("select ").AppendJoin(", ", select);
+        sql.Append(FromWhere(p));
         if (keyCount > 0)
         {
             var ordinals = string.Join(", ", Enumerable.Range(1, keyCount));
