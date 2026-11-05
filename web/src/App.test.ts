@@ -104,4 +104,21 @@ describe('App', () => {
     expect(result.getByRole('columnheader', { name: 'exposure_source' })).toBeTruthy()
     expect(result.getByRole('columnheader', { name: 'provenance' })).toBeTruthy()
   })
+
+  it('App_unknownMethodInExperiment_fallsBackToFirstMethodAndWarns', async () => {
+    const e = {
+      version: 1, name: 'ghosty', methodId: 'ghost',
+      query: { endpoint: 'rates', measure: 'occupant_fatalities', metric: 'passenger_miles', fromYear: 2019, toYear: 2023, groupBy: ['regulation_class'] },
+      bindings: { numerator: 'numerator', denominator: 'denominator' }, params: {},
+    }
+    localStorage.setItem('transport-analyzer.experiments', JSON.stringify([e]))
+    try {
+      render(App, { api: makeApi(async () => ratesResult()) })
+      await fireEvent.change(screen.getByLabelText('Saved'), { target: { value: 'ghosty' } })
+      await waitFor(() => expect(screen.getByText('Unknown method "ghost"; using Cross-tabulation.')).toBeTruthy())
+      expect((screen.getByLabelText('Method') as HTMLSelectElement).value).toBe('crosstab')
+    } finally {
+      localStorage.clear()
+    }
+  })
 })

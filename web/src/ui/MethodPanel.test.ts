@@ -52,4 +52,9 @@ describe('MethodPanel', () => {
     await fireEvent.click(within(screen.getByRole('group', { name: 'Group by' })).getByLabelText('mode'))
     expect(onchange).toHaveBeenLastCalledWith(expect.objectContaining({ bindings: { groups: ['mode'] } }))
   })
+
+  it('MethodPanel_unknownMethod_fallsBackAndWarns', () => {
+    render(MethodPanel, { table, methodId: 'ghost', bindings: {}, params: {}, onchange: vi.fn() })
+    expect(screen.getByText('Unknown method "ghost"; using Cross-tabulation.')).toBeTruthy()
+  })
 })

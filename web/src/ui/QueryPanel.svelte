@@ -104,7 +104,7 @@
       const rows = Math.min(100000, Math.max(1, Math.trunc(Number(n)) || 1))
       onrun({ endpoint, from, to, n: rows, seed: Math.trunc(Number(seed)) || 0, filters: buildFilters() })
     } else {
-      const q: RatesQuery = { endpoint, measure, metric, fromYear: Number(fromYear), toYear: Number(toYear), groupBy: rateGroupBy as RatesQuery['groupBy'] }
+      const q: RatesQuery = { endpoint, measure, metric, fromYear: Number(fromYear), toYear: Number(toYear), groupBy: [...rateGroupBy] as RatesQuery['groupBy'] }
       if (exposureSource) q.exposureSource = exposureSource
       onrun(q)
     }

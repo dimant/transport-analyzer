@@ -46,7 +46,7 @@ mode, provenance survey_estimate. Plan-1 and plan-2 references match to the prin
 | road | 2022 | 33,679 | 0.670 | 0.663 | 0.677 | plan 2: 0.6698 |
 | road | 2023 | 32,140 | 0.631 | 0.625 | 0.638 | plan 2: 0.6314 |
 
-The four zero-death years have a rate of 0 and an upper bound above 0 (rule of three: 3/denominator).
+The four zero-death years have a rate of 0 and an upper bound above 0 (the 95% Garwood upper bound for 0 events is 3.689/denominator, close to the rule of three's 3/denominator).
 
 ### Preset 2: Airlines vs road, 2019–2023 combined
 
@@ -72,8 +72,8 @@ an all-cargo flight (plan 2, Concern 2). The preset note says so.
 | other | 16 | 152,664 | 10.5 | 5.99 | 17.0 | 10.5 (16) |
 | turboprop | 34 | 2,845,776 | 1.19 | 0.827 | 1.67 | 1.20 (34) |
 
-Turboprop: 34 / 2,845,776 = 1.195 per 100k, which plan 2 printed as 1.195 and the brief rounds to 1.20; the 3-digit
-rounding here (1.19, from 1.1948) is the same number.
+Turboprop: 34 / 2,845,776 = 1.1948 per 100k. Plan 2 printed it as 1.20 (two decimals) and this table rounds it to three
+significant digits (1.19); both are the same 1.1948 rounded differently, not a difference in the data.
 
 **Light aircraft differs: 177 before, 179 now (1.226 to 1.240).** The cause is the four NTSB mapping rows accepted on
 2026-11-05 (commit `3a1ba5e`; `AIR::091` and `AIR::121`/`AIR::129` as `vehicle_class,vehicle_profile,...` plus
@@ -92,9 +92,12 @@ The gain in light_aircraft equals the loss in `unknown`/part_91 in every year (+
 `/api/events/aggregate?grain=vehicle&from=2022-01-01&to=2022-12-31&bucket=none&groupBy=vehicle_class,regulation_class&f.mode=aviation&f.country=US&f.vehicle_class=unknown,light_aircraft&f.regulation_class=part_91`
 returns `light_aircraft / part_91`: 792 vehicles, 179 occupant fatalities; `unknown / part_91`: 3 vehicles, 0 fatalities.
 The other 2019–2023 classes (business_jet, experimental, helicopter, other, turboprop) and the `airliner`/`part_121`
-numerators (3 in 2019, `unmatched`) are unchanged from plan 2. The airliner mapping rows (`AIR::121`, `AIR::129`) moved no
+numerator (3 occupant fatalities in 2019, `unmatched`; the airliner vehicle class only) is unchanged from plan 2. The airliner mapping rows (`AIR::121`, `AIR::129`) moved no
 fatalities between rows with a numerator: plan 2 listed `unknown`/part_121 with numerator 0 in every year, and now the
-`unknown`/part_121 cell is gone. `091:UNK` changes `operator_type` only, which these rates do not use. Denominators did not change.
+`unknown`/part_121 cell is gone. The 3 counts airliner vehicles only; the 4 Part 121 deaths in 2019 also include 1 on a
+`turboprop` / `part_121` vehicle (PenAir, DCA20MA002), which is checked with
+`/api/events/aggregate?grain=vehicle&from=2019-01-01&to=2019-12-31&groupBy=vehicle_class,regulation_class&f.mode=aviation&f.country=US`
+(`airliner`/`part_121` 3, `turboprop`/`part_121` 1, `light_aircraft`/`part_121` 0). `091:UNK` changes `operator_type` only, which these rates do not use. Denominators did not change.
 
 ### Preset 4: Road by vehicle class, deaths per 100M vehicle-miles
 

@@ -94,7 +94,7 @@ describe('rate', () => {
     const [table, spec] = rate.render(r) as [TableSpec, IntervalSpec]
     expect(table.kind).toBe('table')
     expect(table.columns.map((c) => c.key)).toEqual([
-      'mode', 'regulation_class', 'year', 'numerator', 'denominator', 'rate', 'lo', 'hi', 'provenance',
+      'mode', 'regulation_class', 'year', 'numerator', 'denominator', 'rate', 'lo', 'hi', 'provenance', 'join_level', 'exposure_source',
     ])
     expect(spec.x).toBe('year')
     expect(spec.series).toBe('series')
@@ -152,5 +152,29 @@ describe('rate.defaultBindings', () => {
   it('rate_defaultBindings_wrongTypeIsSkipped', () => {
     const t = fromRows(['numerator', 'denominator'], [], {})
     expect(rate.defaultBindings!(t)).toEqual({})
+  })
+
+  it('rate_alwaysCarriesProvenanceColumns', () => {
+    const t = mk([['aviation', 2019, 'part_121', 4, 3.1e12, 'regulation_class', 'bts_t100', 'measured']])
+    for (const carry of [undefined, [], ['mode']]) {
+      const r = rate.run(t, { numerator: 'numerator', denominator: 'denominator', groups: ['year'], ...(carry ? { carry } : {}) }, params)
+      expect(Object.keys(r.rows[0].carry)).toEqual([...(carry ?? []), 'join_level', 'exposure_source', 'provenance'])
+      const [spec] = rate.render(r) as [TableSpec, IntervalSpec]
+      const keys = spec.columns.map((c) => c.key)
+      for (const k of ['join_level', 'exposure_source', 'provenance']) expect(keys).toContain(k)
+    }
+    const dup = rate.run(t, { numerator: 'numerator', denominator: 'denominator', carry: ['provenance'] }, params)
+    expect(Object.keys(dup.rows[0].carry)).toEqual(['provenance', 'join_level', 'exposure_source'])
+  })
+
+  it('rate_invalidPer_warnsAndNullsRates', () => {
+    const t = mk([['aviation', 2019, 'part_121', 4, 3.1e12, 'x', 'y', 'measured']])
+    for (const per of [0, -1, NaN, Infinity]) {
+      const r = rate.run(t, b([]), { ...params, per })
+      expect(r.warnings).toContain('rate per must be a positive number')
+      expect(r.rows[0].rate).toBeNull()
+      expect(r.rows[0].lo).toBeNull()
+      expect(r.rows[0].hi).toBeNull()
+    }
   })
 })

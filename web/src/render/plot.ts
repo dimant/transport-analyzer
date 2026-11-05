@@ -28,8 +28,13 @@ function heatmap(spec: HeatmapSpec, width: number): Element {
     const v = val(d)
     return v !== null && (!spec.logScale || v > 0)
   }
-  const title = (d: Row) => `${label(d[spec.x])} / ${label(d[spec.y])}: ${formatValue(val(d), 'number')}`
-  const text = (d: Row) => formatValue(val(d), 'number')
+  const text = (d: Row) => formatValue(val(d), spec.format)
+  const title = (d: Row) => {
+    const head = `${label(d[spec.x])} / ${label(d[spec.y])}: ${text(d)}`
+    const lo = num(d.lo)
+    const hi = num(d.hi)
+    return spec.format === 'rate' && lo !== null && hi !== null ? `${head} [${formatValue(lo, 'rate')}, ${formatValue(hi, 'rate')}]` : head
+  }
   const usableValues = spec.data.filter(usable).map((d) => val(d)!)
   const scaled = (v: number) => (spec.logScale ? Math.log(v) : v)
   const lo = usableValues.length ? scaled(Math.min(...usableValues)) : 0
@@ -59,7 +64,7 @@ function heatmap(spec: HeatmapSpec, width: number): Element {
     // the ramp legend is drawn on a canvas; environments without one (jsdom) get the plot without it
     plot = build(false)
   }
-  return wrap(plot, [])
+  return wrap(plot, spec.caption ? [spec.caption] : [])
 }
 
 function intervals(spec: IntervalSpec, width: number): Element {

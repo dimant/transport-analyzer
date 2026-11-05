@@ -33,6 +33,7 @@ export function formatPer(per: number): string {
 
 const asList = (v: string | string[] | undefined): string[] => (v === undefined || v === '' ? [] : Array.isArray(v) ? v : [v])
 const TIME_COLUMNS = ['year', 'period']
+const PROVENANCE_COLUMNS = ['join_level', 'exposure_source', 'provenance']
 
 interface Pool { groups: Record<string, string>; numerator: number; denominator: number; nonInteger: boolean; carry: Map<string, Set<string>> }
 
@@ -65,7 +66,9 @@ export const rate: Method<RateParams, RateResult> = {
     const nName = b.numerator as string
     const dName = b.denominator as string
     const groupColumns = asList(b.groups)
-    const carryColumns = asList(b.carry)
+    // R12: a rate is never shown without where its exposure came from, whatever the bindings say
+    const carryColumns = [...new Set([...asList(b.carry), ...PROVENANCE_COLUMNS.filter((n) => table.columns.some((c) => c.name === n))])]
+    const validPer = Number.isFinite(p.per) && p.per > 0
     const nCol = column(table, nName)
     const dCol = column(table, dName)
     if (nCol.type === 'categorical' || dCol.type === 'categorical') throw new Error('numerator and denominator must be numeric')
@@ -97,6 +100,7 @@ export const rate: Method<RateParams, RateResult> = {
       if (!Number.isInteger(n)) pool.nonInteger = true
       for (const c of carryColumns) pool.carry.get(c)!.add(labelOf(c, i))
     }
+    if (!validPer) warnings.push('rate per must be a positive number')
     if (skipped > 0) warnings.push(`${skipped} rows skipped: missing numerator or denominator`)
     const rows: RateRow[] = []
     for (const [key, pool] of pools) {
@@ -106,7 +110,9 @@ export const rate: Method<RateParams, RateResult> = {
       let r: number | null = null
       let lo: number | null = null
       let hi: number | null = null
-      if (pool.denominator > 0) {
+      if (!validPer) {
+        // warned once above; rates stay null
+      } else if (pool.denominator > 0) {
         if (pool.nonInteger || !Number.isInteger(pool.numerator)) {
           warnings.push(`${key}: non-integer numerator ${pool.numerator} rounded for the interval`)
         }

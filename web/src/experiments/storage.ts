@@ -27,7 +27,7 @@ export function loadExperiments(storage: Storage | undefined = defaultStorage())
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((e): e is Experiment => typeof e === 'object' && e !== null && e.version === 1 && typeof e.name === 'string')
+    return parsed.filter((e): e is Experiment => typeof e === 'object' && e !== null && e.version === 1 && typeof e.name === 'string' && typeof e.query === 'object' && e.query !== null && typeof e.methodId === 'string')
   } catch {
     return []
   }

@@ -3,7 +3,7 @@
   import { getSources, getVocabulary, runQuery } from './api/client'
   import { buildGlossary } from './api/glossary'
   import type { Query, QueryResult, Source, Vocabulary } from './api/types'
-  import { methodById } from './stats/registry'
+  import { methodById, methods } from './stats/registry'
   import { defaultParams, type Bindings } from './stats/method'
   import type { Experiment } from './experiments/storage'
   import DataPreview from './ui/DataPreview.svelte'
@@ -32,6 +32,7 @@
   let params = $state.raw<Record<string, unknown>>(defaultParams(methodById('rate')!))
   let methodRun = $state.raw<MethodRun | null>(null)
   let note = $state<string | undefined>(undefined)
+  let methodWarning = $state<string | undefined>(undefined)
   let loadId = $state(0)
   let token = 0
   let sources = $state<Source[]>([])
@@ -82,6 +83,7 @@
       methodRun = null
       note = undefined
     }
+    methodWarning = undefined
     methodId = c.methodId
     bindings = c.bindings
     params = c.params
@@ -92,7 +94,16 @@
     loadId++
     if (!(await run(e.query))) return
     note = e.note
-    methodId = e.methodId
+    const known = methodById(e.methodId)
+    const method = known ?? methods[0]
+    methodWarning = known ? undefined : `Unknown method "${e.methodId}"; using ${method.name}.`
+    methodId = method.id
+    if (!known) {
+      // the stored bindings belong to a method we do not have: start the fallback from its defaults, without running it
+      bindings = method.defaultBindings?.(result!.table) ?? {}
+      params = defaultParams(method)
+      return
+    }
     bindings = e.bindings
     params = e.params
     runMethod()
@@ -128,7 +139,7 @@
     <section class="right" aria-label="Analysis">
       <ExperimentBar {current} onload={loadExperiment} />
       {#if result}
-        <MethodPanel table={result.table} {methodId} {bindings} {params} onchange={changeMethod} onrun={runMethod} />
+        <MethodPanel table={result.table} {methodId} {bindings} {params} warning={methodWarning} onchange={changeMethod} onrun={runMethod} />
         <ResultPanel run={methodRun} {note} {glossary} />
       {/if}
     </section>

@@ -34,6 +34,14 @@ describe('experiment storage', () => {
     expect(loadExperiments(s).map((e) => e.name)).toEqual(['a'])
   })
 
+  it('loadExperiments_dropsEntriesWithoutQueryOrMethodId', () => {
+    const s = new MemoryStorage()
+    const { query: _q, ...noQuery } = exp('b')
+    const { methodId: _m, ...noMethod } = exp('c')
+    s.setItem(STORAGE_KEY, JSON.stringify([exp('a'), noQuery, noMethod, { ...exp('d'), query: null }, { ...exp('e'), methodId: 3 }]))
+    expect(loadExperiments(s).map((e) => e.name)).toEqual(['a'])
+  })
+
   it('loadExperiments_throwingStorage_returnsEmpty', () => {
     expect(loadExperiments(throwing())).toEqual([])
   })

@@ -3,7 +3,7 @@ import type { HeatmapSpec, IntervalSpec } from '../stats/method'
 import { renderPlot } from './plot'
 
 const heat: HeatmapSpec = {
-  kind: 'heatmap', x: 'a', y: 'b', fill: 'value', fillLabel: 'count', logScale: true,
+  kind: 'heatmap', x: 'a', y: 'b', fill: 'value', fillLabel: 'count', logScale: true, format: 'integer',
   data: [
     { a: 'p', b: 'u', value: 1 }, { a: 'q', b: 'u', value: 10 }, { a: 'p', b: 'v', value: 100 },
     { a: 'q', b: 'v', value: null }, { a: 'p', b: 'w', value: 5 }, { a: 'q', b: 'w', value: 7 },
@@ -69,5 +69,19 @@ describe('plot', () => {
     expect(el.textContent).not.toContain('warning')
     expect(el2.textContent).not.toContain('warning')
     warn.mockRestore()
+  })
+  it('heatmap_formatDrivesTextAndTitle', () => {
+    const h = (format: HeatmapSpec['format'], value: number, extra: Record<string, number> = {}): HeatmapSpec => ({
+      ...heat, logScale: false, format, data: [{ a: 'p', b: 'u', value, ...extra }],
+    })
+    const rate = renderPlot({ ...h('rate', 0.000128, { lo: 0.0001, hi: 0.00016 }), data: [{ a: 'p', b: 'u', value: 0.000128, lo: 0.0001, hi: 0.00016 }] }, { width: 400 })
+    expect(rate.querySelector('[aria-label="text"] text')!.firstChild!.textContent).toBe('0.000128')
+    expect(rate.querySelector('[aria-label="cell"] title, [aria-label="text"] title')!.textContent).toBe('p / u: 0.000128 [0.0001, 0.00016]')
+    const pct = renderPlot(h('percent', 0.25), { width: 400 })
+    expect(pct.querySelector('[aria-label="text"] text')!.firstChild!.textContent).toBe('25.0%')
+  })
+  it('heatmap_captionShownInFigcaption', () => {
+    const el = renderPlot({ ...heat, caption: 'Exposure: faa-ga-survey · Provenance: survey_estimate' }, { width: 400 })
+    expect(el.querySelector('figcaption')!.textContent).toContain('Exposure: faa-ga-survey · Provenance: survey_estimate')
   })
 })

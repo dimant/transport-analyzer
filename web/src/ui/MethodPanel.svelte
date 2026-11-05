@@ -5,16 +5,19 @@
 
   export interface MethodChange { methodId: string; bindings: Bindings; params: Record<string, unknown> }
 
-  let { table, methodId, bindings, params, onchange, onrun }: {
+  let { table, methodId, bindings, params, warning, onchange, onrun }: {
     table: Table
     methodId: string
     bindings: Bindings
     params: Record<string, unknown>
+    // set by the app when it replaced an unknown method of a loaded experiment
+    warning?: string
     onchange: (c: MethodChange) => void
     onrun?: () => void
   } = $props()
 
   const method = $derived(methodById(methodId) ?? methods[0])
+  const unknown = $derived(methodById(methodId) ? undefined : `Unknown method "${methodId}"; using ${method.name}.`)
   const messages = $derived(validateBindings(method, table, bindings))
   const offered = (input: InputSpec) => table.columns.filter((c) => input.types.includes(c.type)).map((c) => c.name)
   const listOf = (v: string | string[] | undefined): string[] => (v === undefined || v === '' ? [] : Array.isArray(v) ? v : [v])
@@ -48,6 +51,7 @@
       {/each}
     </select>
   </label>
+  {#if warning ?? unknown}<p class="warn" role="status">{warning ?? unknown}</p>{/if}
   <p class="desc">{method.description}</p>
 
   {#each method.inputs as input (input.key)}
@@ -137,6 +141,11 @@
     margin: 0;
     font-size: 0.85rem;
     color: #555;
+  }
+  .warn {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #7a1610;
   }
   fieldset {
     border: 1px solid #ccc;

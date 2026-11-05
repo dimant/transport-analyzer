@@ -2,6 +2,8 @@ import { render } from '@testing-library/svelte'
 import { describe, expect, it } from 'vitest'
 import { buildGlossary } from '../api/glossary'
 import type { TableSpec } from '../stats/method'
+import { crosstab } from '../stats/crosstab'
+import { fromRows } from '../stats/table'
 import TableView from './TableView.svelte'
 
 const glossary = buildGlossary(
@@ -27,5 +29,15 @@ describe('TableView', () => {
     expect(cells[1].textContent).toBe('1,234')
     expect(cells[1].classList.contains('num')).toBe(true)
     expect(container.querySelectorAll('tbody tr:nth-child(2) td')[0].textContent).toBe('(none)')
+  })
+
+  it('TableView_rowNormalizedCrosstab_showsPercentages', () => {
+    const t = fromRows(['a', 'b'], [['x', 'p'], ['x', 'p'], ['x', 'p'], ['x', 'q']], {})
+    const [s] = crosstab.render(crosstab.run(t, { row: 'a', col: 'b' }, { normalize: 'row', margins: true })) as TableSpec[]
+    const { container } = render(TableView, { spec: s })
+    const text = container.textContent ?? ''
+    expect(text).toContain('75.0%')
+    expect(text).toContain('25.0%')
+    expect(text).toContain('100.0%')
   })
 })

@@ -19,6 +19,10 @@ export interface HeatmapSpec {
   fill: string
   fillLabel: string
   logScale: boolean
+  // how cell labels and hovers are formatted
+  format: 'integer' | 'number' | 'rate' | 'percent'
+  // exposure source and provenance of a rate heatmap; shown under the figure
+  caption?: string
   data: Record<string, Cell>[]
 }
 export interface IntervalSpec {

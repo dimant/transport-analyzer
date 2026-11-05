@@ -201,8 +201,7 @@ The browser UI lives in `web/` (Vite + Svelte 5 + TypeScript).
 An experiment is a query, a method, its column bindings and its parameters. Six presets ship with the app (airlines vs road
 by year and combined, GA by aircraft class, road by vehicle class, an aviation heatmap, a road crosstab); load one from the
 experiment list. Your own experiments are saved in the browser's storage only (`localStorage`): they are not sent to the
-server and do not follow you to another browser. Export an experiment as JSON to keep or share it, and import it again
-later. The server counts; the browser does the statistics (rates with exact Garwood intervals, crosstabs, heatmaps).
+server and do not follow you to another browser. Export an experiment as JSON to keep or share it (there is no import yet). The server counts; the browser does the statistics (rates with exact Garwood intervals, crosstabs, heatmaps).
 Every rate is shown with its interval, its exposure source and its provenance.
 
 ### Adding a method

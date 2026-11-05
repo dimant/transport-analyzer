@@ -54,6 +54,20 @@ describe('crosstab', () => {
     expect(r.rowTotals).toEqual([1, 1])
   })
 
+  it('crosstab_normalizeColumnAndTotal_nonzeroShares', () => {
+    const b = { row: 'mode', col: 'vehicle_class', value: 'occupant_fatalities' }
+    const col = crosstab.run(t, b, { normalize: 'column', margins: true })
+    const ci = col.colLabels.indexOf('bus')
+    expect(col.cells[col.rowLabels.indexOf('highway')][ci]).toBeCloseTo(1, 12)
+    expect(col.colTotals.every((x) => x === 1)).toBe(true)
+    const ri = col.rowLabels.indexOf('aviation')
+    expect(col.rowTotals[ri]).toBeCloseTo(104 / 131, 12)
+    const tot = crosstab.run(t, b, { normalize: 'total', margins: true })
+    expect(tot.cells[tot.rowLabels.indexOf('aviation')][tot.colLabels.indexOf('helicopter')]).toBeCloseTo(101 / 131, 12)
+    expect(tot.total).toBe(1)
+    expect(tot.cells.flat().reduce((a, x) => a + x, 0)).toBeCloseTo(1, 12)
+  })
+
   it('crosstab_normalize_zeroDivisorGivesZero', () => {
     const z = fromRows(['a', 'v'], [['x', 0]], { v: 'count' })
     const r = crosstab.run(z, { row: 'a', value: 'v' }, { normalize: 'total', margins: true })
