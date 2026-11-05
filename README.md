@@ -35,7 +35,9 @@ On startup the app migrates the database and loads `data/vocabulary.csv` and `da
 **NTSB** (`ntsb`, aviation accidents and incidents from 2008 on) is downloaded by the app from data.ntsb.gov as
 `avall.zip`, an Access database read with mdbtools (installed in the Docker image; `mdb-tables` and `mdb-export` must be
 on `PATH` when running outside Docker). Every run downloads and stages the whole snapshot; `?years=` limits which
-years are written to events.
+years are written to events. NTSB `occurred_on` is the UTC date of the occurrence (NTSB records most event times in
+UTC), while FARS `occurred_on` is the local date, so an evening accident in US local time can be stored under the next
+day.
 
 **BTS** tables have to be downloaded by hand, because bts.gov blocks automated clients. Save the xlsx download into the
 source's drop folder. The file name does not matter; the newest `*.xlsx` in the folder is used.
@@ -90,7 +92,14 @@ day-of-month, month, day-of-week) and are evaluated in **UTC**:
 | `faa-ga-survey` | `0 0 5 1 3 ?` | 05:00 UTC on 1 March every year |
 
 The BTS sources have no schedule because their files are dropped in by hand. A scheduled run is the same as
-`POST /api/admin/ingest/{id}` without `years`, and it is skipped if a run of that source is already in progress. The
+`POST /api/admin/ingest/{id}` without `years`, and it is skipped if a run of that source is already in progress.
+
+What the default schedules fetch: the monthly FARS run re-ingests the same fixed default years, 2019–2023.
+When NHTSA releases a new year, set `Sources:fars:DefaultYears` (e.g. `Sources__fars__DefaultYears__0: "2019"`, ... in
+`docker-compose.yml`, or a `"DefaultYears": [2019, ..., 2024]` array in `appsettings.json`) or run an explicit
+`POST /api/admin/ingest/fars?years=2024`.
+The FAA URL is pinned to the CY2024 edition, so the yearly `faa-ga-survey` run fetches that same file again until the
+URL is updated (see above). Unchanged downloads do not take extra space in the raw store (see "Stopping and data"). The
 startup log lists each schedule with its next fire time (`docker compose logs app | grep "Scheduled ingest"`).
 
 To change a schedule, edit `Sources:{id}:Schedule` in `src/TransportAnalyzer.Api/appsettings.json` and rebuild, or set
@@ -107,6 +116,9 @@ with an error naming the setting.
 ## Stopping and data
 
 - `docker compose down` keeps the database (`pgdata` volume) and the downloaded raw files (`rawdata` volume).
+- Raw files: a download identical (same sha256) to the same-named file of the source's last successful run is not stored
+  twice; the run records the existing file. Downloads that differ accumulate under the `rawdata` volume and are never
+  deleted by the app.
 - `docker compose down -v` deletes both volumes: everything is ingested again from scratch on the next start.
 
 The files in `data/inbox/` are on your disk and are kept either way.
@@ -133,14 +145,33 @@ All responses are JSON with camelCase keys. Tabular results have `columns` (snak
 Dimensions for `groupBy` and `f.` are `source_id`, `mode`, `event_type`, `severity`, `state`, `country`,
 `operation_class`, `phase` and, at vehicle grain only, `vehicle_class`, `vehicle_class_parent`, `operator_type`,
 `regulation_class`, `maintenance_regime`, `occupants`, `crew_count`, `vehicle_age_years`, `year_built`, `make`.
-`/api/events/sample` returns vehicle rows (each with its event's dimensions) in a random order that is fixed by
-`seed`: the same parameters return the same rows until a matching source is ingested again. A re-ingest, including a
-scheduled one, gives the vehicles new ids, so the same seed then picks different rows even if the data did not change.
-`total` is the number of rows that match.
+`/api/events/sample` returns vehicle rows in a random order that is fixed by `seed`. Each row starts with
+`source_id`, `source_key` (the event's key in its source, e.g. a FARS `ST_CASE` with its year, or an NTSB `ev_id`)
+and `vehicle_no`, which link it back to its source record, followed by the other dimensions, `occurred_on` and the
+casualty counts. The order is computed from that key and the seed, so the same parameters return the same rows as long
+as the data are the same, also after a re-ingest (scheduled or not) of an unchanged file. `total` is the number of rows
+that match.
 
-`/api/rates` returns numerators and denominators, not computed rates; see `join_level` for how each pair was matched.
-Numerators with no exposure are listed in `unmatched` with a `reason`, and casualties not attributed to any vehicle in
-`unattributed`. Rates count **US events only** (`"scope": {"country": "US"}` in the response), because the BTS and FAA
+`/api/rates` returns numerators and denominators, not computed rates. Each row's `join_level` names the exposure key
+the numerator was matched to:
+
+- `mode`: the mode total (no vehicle or regulation class on the exposure row).
+- `vehicle_class`: the numerator's own vehicle class.
+- `vehicle_class_parent`: the parent of the numerator's vehicle class (e.g. a class rolled up to its group), because
+  the exposure has no row for the class itself.
+- `regulation_class`: the numerator's own regulation class.
+- `regulation_class_parent`: the parent of the numerator's regulation class.
+- Combinations joined with `+` when the exposure row has both, e.g. `vehicle_class+regulation_class` or
+  `vehicle_class+regulation_class_parent` (vehicle class part first).
+
+Numerators with no usable exposure are listed in `unmatched` with a `reason`:
+
+- `no_exposure`: no exposure row exists for the cell, its parents or the mode total (as allowed by the grouping).
+- `mixed_granularity`: the cell would roll up to a parent exposure row while another cell matched a child of that parent
+  exactly, so the parent's exposure would be counted beside part of itself; all cells matched to that parent are
+  listed here instead.
+
+Casualties not attributed to any vehicle are in `unattributed`. Rates count **US events only** (`"scope": {"country": "US"}` in the response), because the BTS and FAA
 exposure is national; `/api/events/aggregate` and `/api/events/sample` are not restricted.
 
 Aviation rates by aircraft class need both dimensions:

@@ -5,7 +5,10 @@ with the existing `pgdata` volume.
 Test suite: `dotnet test` was run once, after the real-data checks and with no code changes: 195 passed, 1 skipped,
 0 failed.
 
-No defects found. No code or mapping changes. Two findings for the user are listed under "Concerns" at the end.
+No defects found by this verification run, and no code or mapping changes were made during it. The final whole-branch
+review later found one defect in what is recorded here as Concern 1 (samples changed after every re-ingest); it was
+fixed in the commit range `deff435..HEAD` on `main` (fix in `52565c9`) and re-checked on real data (see Concern 1).
+Two findings for the user are listed under "Concerns" at the end.
 
 ## Step 1: README
 
@@ -184,7 +187,7 @@ returned with fractions (e.g. `5579125972271.872`) and are rounded here.
 > **Read this ratio with these caveats.**
 > - **Four deaths in five years.** The Part 121 numerator is 4 (all in 2019) and 0 in 2020–2023. One more or one fewer
 >   crash moves the five-year rate by 25% or more; the yearly rates are not stable.
-> - **Three of the four are cargo crew.** The staged NTSB record of the Atlas Air crash (DCA19MA086, 3 deaths) has
+> - **Three of the four died on a cargo flight.** The staged NTSB record of the Atlas Air crash (DCA19MA086, 3 deaths) has
 >   `oper_pax_cargo` = `CARG`, `oper_sched` = `NSCH`; its narrative says "Part 121 domestic cargo flight". The
 >   denominator counts passenger-miles only. Only 1 of the 4 deaths (Peninsula AviationServices Inc., DBA PenAir,
 >   DCA20MA002, `PAX` / `SCHD`) was on a passenger flight. The rate definition was not changed here.
@@ -339,13 +342,18 @@ counting rules were not retrieved).
 
 ## Concerns
 
-1. **`/api/events/sample` is reproducible only until the next ingest.** Ordering is `md5(vehicle_id || seed)` as the
-   Task 7 brief specifies, and every FARS/NTSB normalize deletes and re-inserts vehicles with new `gen_random_uuid()`
-   ids. Test: `GET /api/events/sample?from=2019-01-01&to=2019-12-31&f.mode=highway&n=5&seed=7`, then
-   `POST /api/admin/ingest/fars?years=2019` (same file), then the same GET: `total` 51,623 both times, rows not
-   identical (first row Montana 2019-11-06, then Wyoming 2019-08-14). With the monthly FARS and NTSB schedules, a
-   seed's sample changes every month even when the data do not. A stable key (e.g. source id + source key + vehicle
-   number) would fix it, but changes the planned ordering, so it was not changed here. The README states the limit.
+1. **`/api/events/sample` was reproducible only until the next ingest (fixed).** Ordering was
+   `md5(vehicle_id || seed)` as the Task 7 brief specified, and every FARS/NTSB normalize deletes and re-inserts
+   vehicles with new `gen_random_uuid()` ids. Found here: `GET /api/events/sample?from=2019-01-01&to=2019-12-31&f.mode=highway&n=5&seed=7`,
+   then `POST /api/admin/ingest/fars?years=2019` (same file), then the same GET: `total` 51,623 both times, rows not
+   identical (first row Montana 2019-11-06, then Wyoming 2019-08-14). The final review rated this a defect; fixed in
+   `52565c9`: the order is now `md5(concat_ws('|', source_id, source_key, vehicle_no, seed))` with
+   `source_id, source_key, vehicle_no` as tie-break, and each row starts with those three columns. Re-check on the
+   rebuilt stack (2026-11-05 16:30 UTC): the same GET, then `fars?years=2019` again (run
+   `120811ee-6d16-4f1d-9fc6-c6dd063ab052`, succeeded, event 33,487, vehicle 51,623), then the same GET: the two
+   response bodies are byte-identical (`cmp`); first row `fars`, `2019-40301`, vehicle 2, Arizona, 2019-04-21. That run
+   also reused the unchanged raw file (`/data/raw/fars/20261105T160438966/FARS2019NationalCSV.zip`, sha256
+   `0974abb9…`) instead of storing a second copy.
 2. **Part 121 numerator includes cargo.** 3 of the 4 Part 121 occupant deaths are from DCA19MA086 (Atlas Air,
    `oper_pax_cargo` = `CARG`, narrative "Part 121 domestic cargo flight"), while the BTS denominator is domestic
    passenger-miles. The user decides separately whether Part 121 rates should exclude cargo.
