@@ -3,31 +3,17 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Npgsql;
 using TransportAnalyzer.Api.Query;
-using TransportAnalyzer.Domain;
-using TransportAnalyzer.Infrastructure;
-using TransportAnalyzer.Ingestion;
 
 namespace TransportAnalyzer.Tests;
 
-/// <summary>Resets fars 2022 to the clean fixture once (other FARS tests ingest variants that add crashes),
+/// <summary>Resets fars 2022 to the clean fixture once (see <see cref="FarsTestSource.ResetToCleanFixtureAsync"/>),
 /// and hosts one API over that state for every aggregate test.</summary>
 public sealed class AggregateFixture(PostgresFixture db) : IAsyncLifetime
 {
     public ApiFactory Factory { get; } = new(db);
     public string ConnectionString => db.ConnectionString;
 
-    public async Task InitializeAsync()
-    {
-        await using (var conn = new NpgsqlConnection(db.ConnectionString))
-        {
-            await conn.OpenAsync();
-            await using var del = new NpgsqlCommand(
-                "delete from event where source_id = 'fars' and source_key like '2022-%'", conn);
-            await del.ExecuteNonQueryAsync();
-        }
-        await new IngestRunner(db.ConnectionString, new RawStore(Factory.RawRoot))
-            .RunAsync(FarsTestSource.Adapter(FarsTestSource.BuildZip(2022)), new IngestParameters([2022]), CancellationToken.None);
-    }
+    public Task InitializeAsync() => FarsTestSource.ResetToCleanFixtureAsync(db.ConnectionString, Factory.RawRoot);
 
     public async Task DisposeAsync() => await Factory.DisposeAsync();
 }

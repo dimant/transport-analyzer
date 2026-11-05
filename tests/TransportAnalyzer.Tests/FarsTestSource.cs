@@ -1,6 +1,10 @@
 using System.IO.Compression;
 using System.Net;
 using Microsoft.Extensions.Options;
+using Npgsql;
+using TransportAnalyzer.Domain;
+using TransportAnalyzer.Infrastructure;
+using TransportAnalyzer.Ingestion;
 using TransportAnalyzer.Ingestion.Fars;
 
 namespace TransportAnalyzer.Tests;
@@ -33,6 +37,21 @@ public static class FarsTestSource
             }
         }
         return buffer.ToArray();
+    }
+
+    /// <summary>Deletes fars 2022 events (other FARS tests ingest variants that add crashes) and re-ingests the
+    /// clean fixture.</summary>
+    public static async Task ResetToCleanFixtureAsync(string connectionString, string rawRoot)
+    {
+        await using (var conn = new NpgsqlConnection(connectionString))
+        {
+            await conn.OpenAsync();
+            await using var del = new NpgsqlCommand(
+                "delete from event where source_id = 'fars' and source_key like '2022-%'", conn);
+            await del.ExecuteNonQueryAsync();
+        }
+        await new IngestRunner(connectionString, new RawStore(rawRoot))
+            .RunAsync(Adapter(BuildZip(2022)), new IngestParameters([2022]), CancellationToken.None);
     }
 
     public static FarsAdapter Adapter(byte[] zip, StubHandler? handler = null)
