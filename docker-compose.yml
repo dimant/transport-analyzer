@@ -10,6 +10,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
   app:
     build: .
     ports:
@@ -25,4 +27,5 @@ services:
       db:
         condition: service_healthy
 volumes:
+  pgdata:
   rawdata:
