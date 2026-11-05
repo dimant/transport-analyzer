@@ -19,6 +19,11 @@ describe('buildUrl', () => {
     expect(buildUrl({ ...ratesQuery, groupBy: ['vehicle_class', 'regulation_class'], exposureSource: 'x' }))
       .toBe('/api/rates?measure=occupant_fatalities&metric=passenger_miles&fromYear=2022&toYear=2022&groupBy=vehicle_class,regulation_class&exposureSource=x')
   })
+  it('buildUrl_encodesValues', () => {
+    const u = buildUrl({ endpoint: 'sample', from: '2022-01-01', to: '2022-12-31', n: 1, seed: 0, filters: { state: ['New Mexico'], make: ['A&B', 'C#'] } })
+    expect(u).toContain('f.state=New%20Mexico')
+    expect(u).toContain('f.make=A%26B,C%23')
+  })
   it('buildUrl_sample', () => {
     expect(buildUrl({ endpoint: 'sample', from: '2022-01-01', to: '2022-12-31', n: 100, seed: 42, filters: { mode: ['aviation', 'highway'], state: [] } }))
       .toBe('/api/events/sample?from=2022-01-01&to=2022-12-31&n=100&seed=42&f.mode=aviation,highway')
@@ -36,7 +41,8 @@ describe('runQuery', () => {
     expect(type('numerator')).toBe('count')
     expect(type('denominator')).toBe('exposure')
     expect(type('year')).toBe('categorical')
-    expect(r.table.columns.find((c) => c.name === 'year')!.type === 'categorical' && (r.table.columns.find((c) => c.name === 'year') as { values: (string | null)[] }).values[0]).toBe('2022')
+    const year = r.table.columns.find((c) => c.name === 'year')!
+    expect(year.type === 'categorical' && year.values[0]).toBe('2022')
     expect(r.notices.map((n) => n.kind)).toEqual(['scope', 'unmatched', 'unattributed'])
     expect(r.notices[0].text).toBe('US events only')
     const um = r.notices[1].table!

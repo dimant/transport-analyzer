@@ -14,10 +14,13 @@ export class ApiError extends Error {
   }
 }
 
+const enc = (v: string[]) => v.map(encodeURIComponent).join(',')
+
 function filterParams(filters: Filters): string[] {
   return Object.entries(filters)
     .filter(([, v]) => v.length > 0)
-    .map(([k, v]) => `f.${k}=${v.join(',')}`)
+    // the server splits lists on ',' after decoding, so a value containing a literal comma cannot be expressed
+    .map(([k, v]) => `f.${k}=${enc(v)}`)
 }
 
 export function buildUrl(q: Query): string {
@@ -25,17 +28,17 @@ export function buildUrl(q: Query): string {
   let path: string
   if (q.endpoint === 'aggregate') {
     path = '/api/events/aggregate'
-    parts.push(`grain=${q.grain}`, `from=${q.from}`, `to=${q.to}`, `bucket=${q.bucket}`)
-    if (q.groupBy.length > 0) parts.push(`groupBy=${q.groupBy.join(',')}`)
+    parts.push(`grain=${q.grain}`, `from=${encodeURIComponent(q.from)}`, `to=${encodeURIComponent(q.to)}`, `bucket=${q.bucket}`)
+    if (q.groupBy.length > 0) parts.push(`groupBy=${enc(q.groupBy)}`)
     parts.push(...filterParams(q.filters))
   } else if (q.endpoint === 'sample') {
     path = '/api/events/sample'
-    parts.push(`from=${q.from}`, `to=${q.to}`, `n=${q.n}`, `seed=${q.seed}`, ...filterParams(q.filters))
+    parts.push(`from=${encodeURIComponent(q.from)}`, `to=${encodeURIComponent(q.to)}`, `n=${q.n}`, `seed=${q.seed}`, ...filterParams(q.filters))
   } else {
     path = '/api/rates'
     parts.push(`measure=${q.measure}`, `metric=${q.metric}`, `fromYear=${q.fromYear}`, `toYear=${q.toYear}`)
-    if (q.groupBy.length > 0) parts.push(`groupBy=${q.groupBy.join(',')}`)
-    if (q.exposureSource) parts.push(`exposureSource=${q.exposureSource}`)
+    if (q.groupBy.length > 0) parts.push(`groupBy=${enc(q.groupBy)}`)
+    if (q.exposureSource) parts.push(`exposureSource=${encodeURIComponent(q.exposureSource)}`)
   }
   return parts.length ? `${path}?${parts.join('&')}` : path
 }
