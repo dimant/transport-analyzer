@@ -40,7 +40,8 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddSingleton<ISourceAdapter>(sp => new NtsbAdapter(
         sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(NtsbAdapter)),
         sp.GetRequiredService<IMdbExporter>(),
-        sp.GetRequiredService<IOptions<NtsbOptions>>()));
+        sp.GetRequiredService<IOptions<NtsbOptions>>(),
+        sp.GetRequiredService<ILogger<NtsbAdapter>>()));
 
     // BTS tables are downloaded by hand into {Inbox:Root}/{sourceId}/. Unset: the nearest data/inbox walking up
     // from the working directory (works for `dotnet run` in any project folder), else ./data/inbox.
@@ -71,7 +72,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 
 var app = builder.Build();
 
-// Migrate and load vocabulary at startup; skipped when no connection string is configured.
+// Migrate, load vocabulary and sweep NTSB temp leftovers at startup; skipped when no connection string is configured.
 if (!string.IsNullOrWhiteSpace(connectionString))
 {
     var dataRoot = app.Configuration["Data:Root"] ?? Path.Combine(AppContext.BaseDirectory, "data");
@@ -80,6 +81,8 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     await using var conn = new NpgsqlConnection(connectionString);
     await conn.OpenAsync();
     await VocabularyLoader.LoadAsync(conn, dataRoot, CancellationToken.None);
+    // MDBs extracted by an NTSB run that was killed mid-stage (no run is in progress yet).
+    NtsbAdapter.SweepTempDirectories(Path.GetTempPath(), app.Services.GetRequiredService<ILogger<NtsbAdapter>>());
 }
 
 app.UseDefaultFiles();

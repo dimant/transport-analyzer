@@ -8,6 +8,7 @@
 // range, E5 make/model carry outer spaces.
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
@@ -376,5 +377,73 @@ public class NtsbAdapterTests(PostgresFixture db) : IAsyncLifetime
         Assert.Equal("aviation", ntsb.Descriptor.Mode);
         Assert.Equal("events", ntsb.Descriptor.Kind);
         Assert.IsType<MdbToolsExporter>(factory.Services.GetRequiredService<IMdbExporter>());
+    }
+
+    private sealed class WarningLogger : ILogger
+    {
+        public List<string> Warnings { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? ex, Func<TState, Exception?, string> f)
+        { if (level == LogLevel.Warning) Warnings.Add(f(state, ex)); }
+    }
+
+    [Fact]
+    public void SweepTempDirectories_DeletesOnlyNtsbLeftovers()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ta-sweep-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var leftover = Directory.CreateDirectory(Path.Combine(root, "ta-ntsb-" + Guid.NewGuid().ToString("N"))).FullName;
+            File.WriteAllText(Path.Combine(leftover, "source.mdb"), "x");
+            var other = Directory.CreateDirectory(Path.Combine(root, "ta-raw-keep")).FullName;
+            var file = Path.Combine(root, "ta-ntsb-file.txt");
+            File.WriteAllText(file, "not a directory");
+
+            var deleted = NtsbAdapter.SweepTempDirectories(root, new WarningLogger());
+
+            Assert.Equal(1, deleted);
+            Assert.False(Directory.Exists(leftover));
+            Assert.True(Directory.Exists(other));
+            Assert.True(File.Exists(file));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void SweepTempDirectories_FailedDelete_LogsWarning()
+    {
+        if (OperatingSystem.IsWindows()) return; // relies on POSIX directory permissions
+        var root = Path.Combine(Path.GetTempPath(), "ta-sweep-" + Guid.NewGuid().ToString("N"));
+        var locked = Path.Combine(root, "ta-ntsb-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(locked, "sub"));
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserExecute); // entries cannot be removed
+            var log = new WarningLogger();
+
+            var deleted = NtsbAdapter.SweepTempDirectories(root, log);
+
+            Assert.Equal(0, deleted);
+            Assert.Contains(log.Warnings, w => w.Contains(locked));
+        }
+        finally
+        {
+            if (Directory.Exists(locked))
+                File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task Host_Startup_SweepsLeftoverNtsbTempDirectories()
+    {
+        var leftover = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "ta-ntsb-" + Guid.NewGuid().ToString("N"))).FullName;
+        File.WriteAllText(Path.Combine(leftover, "source.mdb"), "x");
+
+        await using var factory = new ApiFactory(db);
+        _ = factory.Services; // starts the host
+
+        Assert.False(Directory.Exists(leftover));
     }
 }

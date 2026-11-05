@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using NpgsqlTypes;
@@ -11,17 +12,57 @@ namespace TransportAnalyzer.Ingestion.Ntsb;
 /// <summary>NTSB aviation accident database: avall.zip holds one Access MDB; every table is exported with
 /// <see cref="IMdbExporter"/> and staged into <c>stg_ntsb</c>, then normalized into <c>event</c> and one
 /// <c>vehicle</c> per aircraft by <c>ntsb-normalize.sql</c>.</summary>
-public sealed partial class NtsbAdapter(HttpClient http, IMdbExporter mdb, IOptions<NtsbOptions> o) : ISourceAdapter
+public sealed partial class NtsbAdapter(HttpClient http, IMdbExporter mdb, IOptions<NtsbOptions> o, ILogger<NtsbAdapter>? logger = null)
+    : ISourceAdapter
 {
+    /// <summary>Prefix of the temp directory each staged zip is extracted into.</summary>
+    public const string TempDirectoryPrefix = "ta-ntsb-";
+
     private const string StagingSchema = "stg_ntsb";
     private const string SnapshotColumn = "snapshot";
 
     public SourceDescriptor Descriptor { get; } = new("ntsb", "NTSB aviation accident and incident database", "aviation", "events",
         "https://data.ntsb.gov/avdata",
         "Accident: an occurrence associated with aircraft operation in which a person is fatally or seriously injured or the aircraft receives substantial damage (49 CFR 830.2). Incident: an occurrence other than an accident that affects or could affect safety.",
-        "Only occurrences the NTSB investigated or recorded. avall covers 2008 onwards. Final reports take 12–24 months, so recent years are incomplete and revised. Scheduled Part 135 (commuter) is not covered by FAA survey exposure.");
+        "Only occurrences the NTSB investigated or recorded. avall covers 2008 onwards. Final reports take 12–24 months, so recent years are incomplete and revised. Scheduled Part 135 (commuter) is not covered by FAA survey exposure. " +
+        "occurred_on is the UTC date of the occurrence (most events have ev_tmzn UTC), while FARS dates are local, so an evening accident in US time can fall on the next day.");
 
     private readonly NtsbOptions _options = o.Value;
+
+    /// <summary>Deletes leftover <c>ta-ntsb-*</c> extraction directories under <paramref name="tempRoot"/> (left by a run
+    /// that was killed mid-stage). Call at startup, before any run. Failed deletes are logged as warnings.</summary>
+    /// <returns>The number of directories deleted.</returns>
+    public static int SweepTempDirectories(string tempRoot, ILogger? logger)
+    {
+        var deleted = 0;
+        IEnumerable<string> dirs;
+        try { dirs = Directory.EnumerateDirectories(tempRoot, TempDirectoryPrefix + "*").ToList(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(ex, "Could not list leftover NTSB temp directories in {TempRoot}", tempRoot);
+            return 0;
+        }
+        foreach (var dir in dirs)
+        {
+            if (TryDeleteDirectory(dir, logger)) deleted++;
+        }
+        if (deleted > 0) logger?.LogInformation("Deleted {Count} leftover NTSB temp director(ies) in {TempRoot}", deleted, tempRoot);
+        return deleted;
+    }
+
+    private static bool TryDeleteDirectory(string dir, ILogger? logger)
+    {
+        try
+        {
+            Directory.Delete(dir, true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(ex, "Could not delete NTSB temp directory {Directory}", dir);
+            return false;
+        }
+    }
 
     private static readonly Lazy<string> NormalizeSql = new(() =>
     {
@@ -53,7 +94,7 @@ public sealed partial class NtsbAdapter(HttpClient http, IMdbExporter mdb, IOpti
         var extra = new Dictionary<string, string> { [SnapshotColumn] = _options.Snapshot };
         foreach (var file in files)
         {
-            var dir = Path.Combine(Path.GetTempPath(), "ta-ntsb-" + Guid.NewGuid().ToString("N"));
+            var dir = Path.Combine(Path.GetTempPath(), TempDirectoryPrefix + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dir);
             try
             {
@@ -82,7 +123,7 @@ public sealed partial class NtsbAdapter(HttpClient http, IMdbExporter mdb, IOpti
             }
             finally
             {
-                try { Directory.Delete(dir, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                TryDeleteDirectory(dir, logger); // a leftover is removed by the next startup's sweep
             }
         }
     }
