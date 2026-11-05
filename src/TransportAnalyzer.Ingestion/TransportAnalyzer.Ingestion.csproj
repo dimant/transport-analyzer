@@ -4,7 +4,8 @@
     <ProjectReference Include="..\TransportAnalyzer.Infrastructure\TransportAnalyzer.Infrastructure.csproj" />
   </ItemGroup>
 
-  <PropertyGroup>
-  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+  </ItemGroup>
 
 </Project>

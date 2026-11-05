@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using TransportAnalyzer.Api.Endpoints;
+using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
+using TransportAnalyzer.Ingestion;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +12,12 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddDbContext<AppDbContext>(o =>
         o.UseNpgsql(connectionString).UseSnakeCaseNamingConvention());
+
+    var rawRoot = builder.Configuration["RawStore:Root"] ?? Path.Combine(AppContext.BaseDirectory, "raw");
+    builder.Services.AddSingleton<IRawStore>(new RawStore(rawRoot));
+    builder.Services.AddSingleton(sp => new IngestRunner(connectionString, sp.GetRequiredService<IRawStore>()));
+    builder.Services.AddSingleton<IngestQueue>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<IngestQueue>());
 }
 
 var app = builder.Build();
@@ -28,6 +37,9 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
+
+if (!string.IsNullOrWhiteSpace(connectionString))
+    app.MapAdminEndpoints(connectionString);
 
 app.Run();
 
