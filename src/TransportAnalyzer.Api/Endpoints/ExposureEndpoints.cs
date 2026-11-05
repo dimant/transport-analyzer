@@ -147,8 +147,8 @@ public static class ExposureEndpoints
                 {
                     mode = u.Key.Mode,
                     year = u.Key.Year,
-                    vehicle_class = u.Key.VehicleClass,
-                    regulation_class = u.Key.RegulationClass,
+                    vehicleClass = u.Key.VehicleClass,
+                    regulationClass = u.Key.RegulationClass,
                     numerator = u.Value,
                 }),
                 unattributed = await UnattributedAsync(conn, from, to, ct),

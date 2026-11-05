@@ -40,6 +40,18 @@ public class IngestRunnerTests(PostgresFixture db)
             => throw new InvalidOperationException("boom");
     }
 
+    [Fact]
+    public async Task Run_PersistsParametersWithCamelCaseKeys()
+    {
+        var runner = new IngestRunner(db.ConnectionString, new RawStore(Path.Combine(Path.GetTempPath(), "ta-raw-" + Guid.NewGuid().ToString("N"))));
+        var id = await runner.RunAsync(new FakeAdapter("fake-params"), new IngestParameters([2019, 2020]), CancellationToken.None);
+        await using var conn = new NpgsqlConnection(db.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("select parameters::text from ingest_run where ingest_run_id = @id", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        Assert.Equal("{\"years\": [2019, 2020]}", (string)(await cmd.ExecuteScalarAsync())!);
+    }
+
     private async Task<(string status, string rawFiles, string? error, bool finished)> GetRun(Guid id)
     {
         await using var conn = new NpgsqlConnection(db.ConnectionString);
@@ -65,7 +77,9 @@ public class IngestRunnerTests(PostgresFixture db)
             Assert.True(run.finished);
             var files = JsonDocument.Parse(run.rawFiles).RootElement;
             Assert.Equal(1, files.GetArrayLength());
-            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Bytes)), files[0].GetProperty("Sha256").GetString());
+            // R24: persisted JSON object keys are camelCase.
+            Assert.Equal(["name", "path", "sha256", "fetchedAt"], files[0].EnumerateObject().Select(p => p.Name));
+            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Bytes)), files[0].GetProperty("sha256").GetString());
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

@@ -8,6 +8,10 @@ namespace TransportAnalyzer.Ingestion;
 
 public class IngestRunner(string connectionString, IRawStore raw, ILogger? logger = null)
 {
+    /// <summary>R24: persisted JSON uses camelCase object keys. Dictionary keys (row counts, unmapped) are data and
+    /// are written as given.</summary>
+    private static readonly JsonSerializerOptions Json = JsonSerializerOptions.Web;
+
     /// <summary>Inserts a run row with status 'running' and returns its id.</summary>
     public async Task<Guid> CreateRunAsync(string sourceId, IngestParameters p, CancellationToken ct)
     {
@@ -19,7 +23,7 @@ public class IngestRunner(string connectionString, IRawStore raw, ILogger? logge
             "values (@id, @src, now(), 'running', @p, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb)", conn);
         cmd.Parameters.AddWithValue("id", runId);
         cmd.Parameters.AddWithValue("src", sourceId);
-        cmd.Parameters.Add(new NpgsqlParameter("p", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(p) });
+        cmd.Parameters.Add(new NpgsqlParameter("p", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(p, Json) });
         await cmd.ExecuteNonQueryAsync(ct);
         return runId;
     }
@@ -131,9 +135,9 @@ public class IngestRunner(string connectionString, IRawStore raw, ILogger? logge
             "where ingest_run_id = @id", conn);
         cmd.Parameters.AddWithValue("id", runId);
         cmd.Parameters.AddWithValue("s", status);
-        cmd.Parameters.Add(new NpgsqlParameter("f", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(files) });
-        cmd.Parameters.Add(new NpgsqlParameter("c", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(rowCounts) });
-        cmd.Parameters.Add(new NpgsqlParameter("u", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(unmapped) });
+        cmd.Parameters.Add(new NpgsqlParameter("f", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(files, Json) });
+        cmd.Parameters.Add(new NpgsqlParameter("c", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(rowCounts, Json) });
+        cmd.Parameters.Add(new NpgsqlParameter("u", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(unmapped, Json) });
         cmd.Parameters.Add(new NpgsqlParameter("e", NpgsqlDbType.Text) { Value = (object?)error ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync(CancellationToken.None);
     }

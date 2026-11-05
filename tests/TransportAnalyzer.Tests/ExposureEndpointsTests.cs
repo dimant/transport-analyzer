@@ -85,11 +85,13 @@ public class ExposureEndpointsTests(ExposureFixture fx) : IClassFixture<Exposure
         // heavy_truck has no exposure of its own and must not fall back to the highway total.
         Assert.DoesNotContain(Rows(body), r => r["vehicle_class"].ValueKind == JsonValueKind.Null);
         var heavy = Assert.Single(body.GetProperty("unmatched").EnumerateArray(),
-            u => u.GetProperty("vehicle_class").GetString() == "heavy_truck");
+            u => u.GetProperty("vehicleClass").GetString() == "heavy_truck");
         Assert.Equal("highway", heavy.GetProperty("mode").GetString());
         Assert.Equal(2022, heavy.GetProperty("year").GetInt32());
-        Assert.Equal(JsonValueKind.Null, heavy.GetProperty("regulation_class").ValueKind);
+        Assert.Equal(JsonValueKind.Null, heavy.GetProperty("regulationClass").ValueKind);
         Assert.Equal(0, heavy.GetProperty("numerator").GetInt64());
+        Assert.Equal(["mode", "year", "vehicleClass", "regulationClass", "numerator"],
+            heavy.EnumerateObject().Select(p => p.Name));
     }
 
     [Fact]
