@@ -1,7 +1,7 @@
 # Plan 1 real-data verification
 
 Run date: 2026-11-04 (container clock 2026-11-05 UTC). Stack: `docker compose up -d --build` on a fresh database.
-Test suite before and after: `dotnet test`, 100 passed, 0 failed.
+Test suite: `dotnet test` was run once, after the real-data checks and with no code changes: 100 passed, 0 failed.
 Controller rulings R9 and R22 replace the brief's Step 2 totals and Step 6 metric.
 
 No defects found. No code or mapping changes.
@@ -55,7 +55,7 @@ The shares are well below the brief's guess of a "small single-digit percentage"
 `unknown` codes that come from deliberate explicit mappings in `data/mappings/fars.csv`, recorded for the user's review:
 - `vehicle_class=unknown`: 6,300 vehicles (`body_typ` 99 = 5,318, `body_typ` 98 = 982). FARS codes these as "unknown body type" / "not reported".
 - `regulation_class=unknown` and `operator_type=unknown`: 2,231 vehicles each (from `spec_use` 98/99).
-- `maintenance_regime=unknown`: 258,979 of 287,250 vehicles. The mapping sets `mandated_periodic` only for 30 commercial body types and `unknown` everywhere else, because FARS does not record maintenance.
+- `maintenance_regime=unknown`: 258,979 of 287,250 vehicles. The mapping sets `mandated_periodic` for the 30 `body_typ` values 50–79 (FARS bus and medium/heavy truck codes) and `unknown` everywhere else, because FARS does not record maintenance.
 
 Proposed additions to `fars.csv`: none needed (no value is unmapped). The file was not edited.
 
@@ -70,6 +70,7 @@ Note: the BTS runs each report `unmapped` `{partial_sum:highway/light_duty/1960:
 
 2022 passenger-miles: aviation part_121 708,960,150,712; highway total 5,027,965,006,953; light_duty 4,291,908,799,297; motorcycle 24,369,327,209; bus 380,414,454,199; heavy_truck 331,272,426,248.
 2022 vehicle-miles: highway total 3,196,191,396,670; light_duty 2,822,663,943,466; motorcycle 23,764,862,512; bus 18,490,164,443; heavy_truck 331,272,426,248. The four classes sum to the total.
+In the BTS table, heavy_truck passenger-miles equal heavy_truck vehicle-miles (331,272,426,248 in both), which means an occupancy of 1.
 
 ## Step 6: Hand-checked rate (R22, vehicle-miles)
 
@@ -89,7 +90,7 @@ Numerator check against Postgres: 2022 occupant fatalities by class are passenge
 |---|---|---|---|
 | Motorcycle rate against NHTSA "Motorcycles: 2023 Data" (DOT HS 813 732), Table 1/2, 2022 row: 6,251 killed, 23,765M VMT, 26.30 per 100M VMT | within 20% | 26.32 (+0.08%). The VMT denominator matches (23,765M); the numerator differs by 4 (6,255 occupants of motorcycle body types vs 6,251 motorcyclists) | pass |
 | Same rate against the original 2022 fact sheet (DOT HS 813 589), 26.16, as reported by search results (not opened) | within 20% | +0.61% | pass |
-| Motorcycle rate about 10x the light-duty rate | about an order of magnitude | 26.32 / 0.90 = 29.1x. NHTSA gives passenger cars 1.20 and light trucks 0.72 for 2022; our combined light_duty value of 0.90 lies between them | pass |
+| Motorcycle rate about 10x the light-duty rate (directional sanity check only, not a precise comparison) | about an order of magnitude | 26.32 / 0.90 = 29.1x. NHTSA DOT HS 813 732, Table 2 (opened; text extracted with pdftotext), 2022 "Per 100 Million VMT" row: passenger cars 1.20, light trucks 0.72. Our combined light_duty value of 0.90 lies between them | pass |
 
 ## Headline: occupant fatalities per passenger-mile, 2019–2023
 
