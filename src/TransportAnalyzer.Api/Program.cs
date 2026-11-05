@@ -64,6 +64,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 {
     app.MapAdminEndpoints(connectionString);
     app.MapSourceEndpoints(connectionString);
+    app.MapEventEndpoints(connectionString);
 }
 
 app.Run();
