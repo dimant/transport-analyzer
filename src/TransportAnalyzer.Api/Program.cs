@@ -15,7 +15,8 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 
     var rawRoot = builder.Configuration["RawStore:Root"] ?? Path.Combine(AppContext.BaseDirectory, "raw");
     builder.Services.AddSingleton<IRawStore>(new RawStore(rawRoot));
-    builder.Services.AddSingleton(sp => new IngestRunner(connectionString, sp.GetRequiredService<IRawStore>()));
+    builder.Services.AddSingleton(sp => new IngestRunner(connectionString, sp.GetRequiredService<IRawStore>(),
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger<IngestRunner>()));
     builder.Services.AddSingleton<IngestQueue>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<IngestQueue>());
 }

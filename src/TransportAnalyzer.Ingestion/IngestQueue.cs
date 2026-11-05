@@ -23,6 +23,29 @@ public sealed class IngestQueue(IngestRunner runner, IEnumerable<ISourceAdapter>
         return runId;
     }
 
+    private readonly SemaphoreSlim _enqueueLock = new(1, 1);
+
+    /// <summary>Like EnqueueAsync, but refuses when a run for the source is already 'running'.</summary>
+    public async Task<(bool Started, Guid RunId)> TryEnqueueAsync(string sourceId, IngestParameters p)
+    {
+        await _enqueueLock.WaitAsync();
+        try
+        {
+            if (await runner.FindRunningAsync(sourceId, CancellationToken.None) is { } existing)
+                return (false, existing);
+            return (true, await EnqueueAsync(sourceId, p));
+        }
+        finally { _enqueueLock.Release(); }
+    }
+
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        // Runs left 'running' by a previous process can never finish; fail them so they do not block new runs.
+        try { await runner.AbandonRunningAsync(cancellationToken); }
+        catch (Exception ex) { logger.LogError(ex, "Could not sweep abandoned ingest runs"); }
+        await base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try

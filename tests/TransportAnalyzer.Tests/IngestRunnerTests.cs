@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using TransportAnalyzer.Domain;
 using TransportAnalyzer.Infrastructure;
@@ -107,5 +108,87 @@ public class IngestRunnerTests(PostgresFixture db)
         var deadline = DateTime.UtcNow.AddSeconds(20);
         while ((await GetRun(runId)).status == "running" && DateTime.UtcNow < deadline) await Task.Delay(100);
         Assert.Equal("succeeded", (await GetRun(runId)).status);
+    }
+
+    private sealed class ListLogger : ILogger
+    {
+        public List<string> Errors { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? ex, Func<TState, Exception?, string> f)
+        { if (level >= LogLevel.Error) Errors.Add(f(state, ex) + " | " + ex); }
+    }
+
+    private sealed class FlakyFinishRunner(string cs, ILogger log, string failOn) : IngestRunner(cs, new RawStore(Path.GetTempPath()), log)
+    {
+        public List<string> Attempts { get; } = [];
+        protected override Task FinishAsync(Guid runId, string status, IReadOnlyList<RawFile> files,
+            IReadOnlyDictionary<string, long> rowCounts, IReadOnlyDictionary<string, long> unmapped, string? error)
+        {
+            Attempts.Add(status);
+            if (status == failOn) throw new NpgsqlException("db down");
+            return base.FinishAsync(runId, status, files, rowCounts, unmapped, error);
+        }
+    }
+
+    private async Task InsertRunning(Guid id, string sourceId)
+    {
+        await using var conn = new NpgsqlConnection(db.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "insert into ingest_run (ingest_run_id, source_id, started_at, status, parameters, raw_files, row_counts, unmapped) " +
+            "values (@id, @s, now(), 'running', '{}', '[]', '{}', '{}')", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("s", sourceId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    [Fact]
+    public async Task Run_FailedStatusWriteFails_LogsBothAndDoesNotThrow()
+    {
+        var log = new ListLogger();
+        var runner = new FlakyFinishRunner(db.ConnectionString, log, "failed");
+        await runner.RunAsync(new ThrowingAdapter(), new IngestParameters(null), CancellationToken.None);
+        var entry = Assert.Single(log.Errors);
+        Assert.Contains("boom", entry);
+        Assert.Contains("db down", entry);
+    }
+
+    [Fact]
+    public async Task Run_SucceededStatusWriteFails_DoesNotRecordFailed()
+    {
+        var log = new ListLogger();
+        var runner = new FlakyFinishRunner(db.ConnectionString, log, "succeeded");
+        await runner.RunAsync(new FakeAdapter(), new IngestParameters(null), CancellationToken.None);
+        Assert.Equal(["succeeded"], runner.Attempts);
+        Assert.Single(log.Errors);
+    }
+
+    [Fact]
+    public async Task Queue_Start_FailsLeftoverRunningRows()
+    {
+        var id = Guid.NewGuid();
+        await InsertRunning(id, "sweep-src");
+        var runner = new IngestRunner(db.ConnectionString, new RawStore(Path.GetTempPath()));
+        var queue = new IngestQueue(runner, [], Microsoft.Extensions.Logging.Abstractions.NullLogger<IngestQueue>.Instance);
+        await queue.StartAsync(CancellationToken.None);
+        await queue.StopAsync(CancellationToken.None);
+        var run = await GetRun(id);
+        Assert.Equal("failed", run.status);
+        Assert.Contains("abandoned", run.error);
+    }
+
+    [Fact]
+    public async Task AdminIngest_WhileRunning_Returns409WithExistingRunId()
+    {
+        await using var factory = new ApiFactory(db, null, new FakeAdapter("fake-409"));
+        var client = factory.CreateClient(); // host (and its startup sweep) is up before the row is inserted
+        var existing = Guid.NewGuid();
+        await InsertRunning(existing, "fake-409");
+        var res = await client.PostAsync("/api/admin/ingest/fake-409", null);
+        Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
+        var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(existing, body.GetProperty("runId").GetGuid());
+        Assert.True(body.TryGetProperty("error", out _));
     }
 }

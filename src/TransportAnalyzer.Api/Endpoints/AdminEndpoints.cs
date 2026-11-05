@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Npgsql;
 using TransportAnalyzer.Domain;
 using TransportAnalyzer.Ingestion;
@@ -12,8 +14,12 @@ public static class AdminEndpoints
         admin.AddEndpointFilter(async (ctx, next) =>
         {
             var token = ctx.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Admin:Token"];
-            if (!string.IsNullOrEmpty(token) && ctx.HttpContext.Request.Headers["X-Admin-Token"] != token)
-                return Results.Unauthorized();
+            if (!string.IsNullOrEmpty(token))
+            {
+                var supplied = Encoding.UTF8.GetBytes(ctx.HttpContext.Request.Headers["X-Admin-Token"].ToString());
+                if (!CryptographicOperations.FixedTimeEquals(supplied, Encoding.UTF8.GetBytes(token)))
+                    return Results.Unauthorized();
+            }
             return await next(ctx);
         });
 
@@ -30,8 +36,10 @@ public static class AdminEndpoints
                     parsed.Add(y);
                 }
             }
-            var runId = await queue.EnqueueAsync(sourceId, new IngestParameters(parsed));
-            return Results.Accepted(value: new { runId });
+            var (started, runId) = await queue.TryEnqueueAsync(sourceId, new IngestParameters(parsed));
+            return started
+                ? Results.Accepted(value: new { runId })
+                : Results.Json(new { error = $"a run for '{sourceId}' is already running", runId }, statusCode: StatusCodes.Status409Conflict);
         });
 
         admin.MapGet("/runs", async (string? sourceId, int? limit, CancellationToken ct) =>
