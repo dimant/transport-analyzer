@@ -16,6 +16,8 @@ public sealed class ExposureFixture(PostgresFixture db) : IAsyncLifetime
 
     public ApiFactory Factory { get; } = new(db);
 
+    public string ConnectionString => db.ConnectionString;
+
     public async Task InitializeAsync()
     {
         await FarsTestSource.ResetToCleanFixtureAsync(db.ConnectionString, Factory.RawRoot);
@@ -25,6 +27,7 @@ public sealed class ExposureFixture(PostgresFixture db) : IAsyncLifetime
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand($"""
             delete from exposure where source_id in ('bts-passenger-miles', '{OtherSource}', 'faa-ga-survey') and year = 2022;
+            {UnattributedEvents}
             insert into exposure (exposure_id, source_id, mode, year, vehicle_class, regulation_class, metric, value, provenance, ingest_run_id)
             values (gen_random_uuid(), 'bts-passenger-miles', 'highway', 2022, 'light_duty', null, 'passenger_miles', 1000, 'survey_estimate', gen_random_uuid()),
                    (gen_random_uuid(), 'bts-passenger-miles', 'highway', 2022, null, null, 'passenger_miles', 5000, 'survey_estimate', gen_random_uuid()),
@@ -36,7 +39,24 @@ public sealed class ExposureFixture(PostgresFixture db) : IAsyncLifetime
         await cmd.ExecuteNonQueryAsync();
     }
 
-    public async Task DisposeAsync() => await Factory.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        await using (var conn = new NpgsqlConnection(db.ConnectionString))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand("delete from event where source_id = 'ntsb' and source_key like 'T6-UNATTR-%'", conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await Factory.DisposeAsync();
+    }
+
+    /// <summary>Two vehicle-less aviation events in 2022 with unattributed fatalities: BR (7) and US (3).</summary>
+    private static string UnattributedEvents => """
+        insert into event (event_id, source_id, source_key, mode, event_type, occurred_on, country, severity, fatalities,
+                           serious_injuries, minor_injuries, unattributed_fatalities, source_payload, ingest_run_id)
+        values (gen_random_uuid(), 'ntsb', 'T6-UNATTR-BR', 'aviation', 'accident', date '2022-07-01', 'BR', 'fatal', 7, 0, 0, 7, '{}', gen_random_uuid()),
+               (gen_random_uuid(), 'ntsb', 'T6-UNATTR-US', 'aviation', 'accident', date '2022-07-02', 'US', 'fatal', 3, 0, 0, 3, '{}', gen_random_uuid());
+        """;
 }
 
 [Collection("db")]
@@ -178,8 +198,19 @@ public class ExposureEndpointsTests(ExposureFixture fx) : IClassFixture<Exposure
         Assert.Equal(0, body.GetProperty("unmatched").EnumerateArray().Where(u => u.GetProperty("reason").GetString() == "no_exposure"
             && u.GetProperty("vehicleClass").GetString() == "business_jet").Sum(u => u.GetProperty("numerator").GetInt64()));
         Assert.DoesNotContain(Rows(body), r => r["vehicle_class"].GetString() == "business_jet" && r["numerator"].GetInt64() > 0);
-        Assert.DoesNotContain(body.GetProperty("unmatched").EnumerateArray(), u => u.GetProperty("vehicleClass").GetString() == "other");
-        Assert.DoesNotContain(body.GetProperty("unattributed").EnumerateArray(), u => u.GetProperty("fatalities").GetInt64() == 2);
+        Assert.DoesNotContain(body.GetProperty("unmatched").EnumerateArray(), u => u.GetProperty("regulationClass").GetString() == "other");
+
+        // Unattributed: the aviation total is the US events' sum, which includes the US twin (3) and not the BR one (7).
+        await using var conn = new NpgsqlConnection(fx.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("""
+            select coalesce(sum(unattributed_fatalities), 0) from event
+            where source_id = 'ntsb' and mode = 'aviation' and country = 'US' and occurred_on between '2022-01-01' and '2022-12-31'
+            """, conn);
+        var expected = Convert.ToInt64(await cmd.ExecuteScalarAsync());
+        Assert.True(expected >= 3);
+        var aviation = Assert.Single(body.GetProperty("unattributed").EnumerateArray(), u => u.GetProperty("mode").GetString() == "aviation");
+        Assert.Equal(expected, aviation.GetProperty("fatalities").GetInt64());
     }
 
     [Fact]
