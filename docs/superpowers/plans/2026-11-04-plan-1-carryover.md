@@ -21,7 +21,7 @@ Items found during plan 1 that were deliberately deferred. Each names the plan w
 - **JSON conventions.** Object keys are camelCase. Tabular `columns` keep snake_case whitelist names. Data keys such as `unknown:vehicle_class` are opaque strings. BTS sources report `mode: "multi"`, which is not a vocabulary code.
 - **Run records before 2026-11-04** keep PascalCase `raw_files` / `parameters`.
 
-## User review pending
+## User review pending (accepted 2026-11-05)
 
 - `data/mappings/fars.csv` choices:
   - motor homes (body types 65, 73) map to `heavy_truck` / `road_commercial`
@@ -33,14 +33,10 @@ Items found during plan 1 that were deliberately deferred. Each names the plan w
 
 Plan 2 closed these plan-1 items: the empty-FARS-year guard, mixed granularity in rates, the `flight_hours` default, US-only rate scope, the BTS schedule question, the RawStore collision, and stuck `running` rows.
 
-### Waiting on the user
-- **Part 121 rates and cargo flights.** The Part 121 numerator includes all-cargo flights, while the denominator is passenger-miles. Of 4 occupant deaths in 2019–2023, 3 were on Atlas Air flight 3591 (DCA19MA086, `oper_pax_cargo = CARG`). Should Part 121 rates count passenger flights (`PAX`) only?
-- **`data/mappings/ntsb.csv` choices:**
-  - `AIR:TF:NUSC` maps to `business_jet`.
-  - Airplanes with engine type TS, LR, HR, NONE, UNK or blank map to `unknown`.
-  - Gyroplanes map to `helicopter`; homebuilt helicopters map to `experimental`.
-  - Part 91 with a blank purpose maps to `private`.
-  - `docs/verification/plan-2.md` Step 4 proposes additions: `AIR::121`, `AIR::129`, `091:UNK`, `AIR::091`.
+### Decided by the user (2026-11-05)
+- **Part 121 rates include cargo flights.** The Part 121 numerator keeps all-cargo flights (e.g. Atlas Air 3591, DCA19MA086) although the denominator is passenger-miles. The UI should note this next to Part 121 rates.
+- **`data/mappings/ntsb.csv` choices accepted as proposed**, including the Step 4 additions from `docs/verification/plan-2.md`: `AIR::121` and `AIR::129` → `airliner`, `AIR::091` → `light_aircraft`, `091:UNK` → `private`. Some `AIR::091` airplanes may be turbine aircraft.
+- **`data/mappings/fars.csv` choices accepted as proposed** (listed under "User review pending" above).
 
 ### Plan 3 (frontend)
 - **NTSB dates are UTC.** NTSB `occurred_on` is the UTC date, while FARS dates are local. Day-of-week and hour views must say so, or filter by source.

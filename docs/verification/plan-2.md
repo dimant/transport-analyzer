@@ -100,7 +100,7 @@ snapshots.
 | 60 | `vehicle_class:vehicle_profile=::NUSN` | none | as `::NUSC` |
 | 52 | `operator_type:use_profile=091:UNK` | `operator_type,use_profile,091:UNK,private,3` | same as the existing `091:` (blank purpose) → `private` |
 
-The mapping file was not edited.
+The mapping file was not edited during verification. On 2026-11-05 the user accepted the four proposed rows, and they were added to `ntsb.csv`.
 
 Effect on the Step 6 numbers: of all NTSB vehicles with `vehicle_class=unknown`, 107 are US events 2019–2023, with 20
 occupant fatalities (part_91 69 vehicles / 17 deaths, part_121 16 / 0, other 9 / 0, part_137 8 / 1, part_135 3 / 2,

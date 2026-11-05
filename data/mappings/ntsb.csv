@@ -20,6 +20,9 @@ vehicle_class,vehicle_profile,PPAR:%,other,7
 vehicle_class,vehicle_profile,ULTR:%,other,7
 vehicle_class,vehicle_profile,PLFT:%,other,7
 vehicle_class,vehicle_profile,RCKT:%,other,7
+vehicle_class,vehicle_profile,AIR::121,airliner,8
+vehicle_class,vehicle_profile,AIR::129,airliner,8
+vehicle_class,vehicle_profile,AIR::091,light_aircraft,8
 regulation_class,reg_profile,135:SCHD,part_135_scheduled,1
 regulation_class,reg_profile,091:%,part_91,2
 regulation_class,reg_profile,091K:%,part_91,2
@@ -52,6 +55,7 @@ operator_type,use_profile,NUSC:%,commercial,2
 operator_type,use_profile,091K:%,commercial,2
 operator_type,use_profile,091:PERS,private,3
 operator_type,use_profile,091:,private,3
+operator_type,use_profile,091:UNK,private,3
 operator_type,use_profile,NUSN:%,private,3
 operator_type,use_profile,091:INST,commercial,4
 operator_type,use_profile,091:BUS,commercial,4
