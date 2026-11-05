@@ -15,11 +15,11 @@ public class IngestRunnerTests(PostgresFixture db)
 {
     private static readonly byte[] Bytes = Encoding.UTF8.GetBytes("hello,world\n1,2\n");
 
-    private class FakeAdapter(string id = "fake") : ISourceAdapter
+    private class FakeAdapter(string id = "fake", byte[]? content = null) : ISourceAdapter
     {
         public SourceDescriptor Descriptor { get; } = new(id, "Fake", "batch", "events", "", "", "");
         public async Task<IReadOnlyList<RawFile>> FetchAsync(IRawStore raw, IngestParameters p, CancellationToken ct)
-            => [await raw.SaveAsync(Descriptor.SourceId, "a.csv", new MemoryStream(Bytes), ct)];
+            => [await raw.SaveAsync(Descriptor.SourceId, "a.csv", new MemoryStream(content ?? Bytes), ct)];
         public Task StageAsync(IReadOnlyList<RawFile> files, NpgsqlConnection conn, IngestParameters p, CancellationToken ct) => Task.CompletedTask;
         public Task<NormalizeResult> NormalizeAsync(NpgsqlConnection conn, Guid runId, IngestParameters p, CancellationToken ct)
             => Task.FromResult(new NormalizeResult(new Dictionary<string, long> { ["event"] = 0 }, new Dictionary<string, long>()));
@@ -80,6 +80,57 @@ public class IngestRunnerTests(PostgresFixture db)
             // R24: persisted JSON object keys are camelCase.
             Assert.Equal(["name", "path", "sha256", "fetchedAt"], files[0].EnumerateObject().Select(p => p.Name));
             Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Bytes)), files[0].GetProperty("sha256").GetString());
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    private async Task<(string status, JsonElement file, string rowCounts)> GetRunFile(Guid id)
+    {
+        var run = await GetRun(id);
+        await using var conn = new NpgsqlConnection(db.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("select row_counts::text from ingest_run where ingest_run_id = @id", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        var rowCounts = (string)(await cmd.ExecuteScalarAsync())!;
+        return (run.status, JsonDocument.Parse(run.rawFiles).RootElement[0].Clone(), rowCounts);
+    }
+
+    [Fact]
+    public async Task Run_IdenticalDownload_ReusesPreviousRawFile()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ta-raw-" + Guid.NewGuid().ToString("N"));
+        var sourceId = "fake-dedup-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var runner = new IngestRunner(db.ConnectionString, new RawStore(root));
+            var first = await GetRunFile(await runner.RunAsync(new FakeAdapter(sourceId), new IngestParameters(null), CancellationToken.None));
+            var second = await GetRunFile(await runner.RunAsync(new FakeAdapter(sourceId), new IngestParameters(null), CancellationToken.None));
+
+            Assert.Equal("succeeded", second.status);
+            Assert.Equal("{\"event\": 0}", second.rowCounts); // normalize still ran
+            Assert.Equal(first.file.GetProperty("path").GetString(), second.file.GetProperty("path").GetString());
+            Assert.Equal(first.file.GetProperty("sha256").GetString(), second.file.GetProperty("sha256").GetString());
+            var stored = Directory.GetFiles(Path.Combine(root, sourceId), "*", SearchOption.AllDirectories);
+            Assert.Equal(first.file.GetProperty("path").GetString(), Assert.Single(stored));
+            Assert.Single(Directory.GetDirectories(Path.Combine(root, sourceId))); // the new copy's directory is gone too
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Run_ChangedDownload_StoresNewRawFile()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ta-raw-" + Guid.NewGuid().ToString("N"));
+        var sourceId = "fake-changed-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var runner = new IngestRunner(db.ConnectionString, new RawStore(root));
+            var first = await GetRunFile(await runner.RunAsync(new FakeAdapter(sourceId), new IngestParameters(null), CancellationToken.None));
+            var second = await GetRunFile(await runner.RunAsync(new FakeAdapter(sourceId, Encoding.UTF8.GetBytes("changed\n")),
+                new IngestParameters(null), CancellationToken.None));
+
+            Assert.NotEqual(first.file.GetProperty("path").GetString(), second.file.GetProperty("path").GetString());
+            Assert.Equal(2, Directory.GetFiles(Path.Combine(root, sourceId), "*", SearchOption.AllDirectories).Length);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

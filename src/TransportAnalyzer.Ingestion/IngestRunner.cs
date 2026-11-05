@@ -44,7 +44,7 @@ public class IngestRunner(string connectionString, IRawStore raw, ILogger? logge
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(ct);
-            files = await a.FetchAsync(raw, p, ct);
+            files = await a.FetchAsync(new DedupingRawStore(raw, connectionString, logger), p, ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
             await a.StageAsync(files, conn, p, ct);
             result = await a.NormalizeAsync(conn, runId, p, ct);
@@ -153,5 +153,45 @@ public class IngestRunner(string connectionString, IRawStore raw, ILogger? logge
         cmd.Parameters.Add(new NpgsqlParameter("u", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(unmapped, Json) });
         cmd.Parameters.Add(new NpgsqlParameter("e", NpgsqlDbType.Text) { Value = (object?)error ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync(CancellationToken.None);
+    }
+
+    /// <summary>Saves through <paramref name="inner"/>, then, when the new file's sha256 equals that of the same-named raw
+    /// file of the source's most recent succeeded run that has one, and that file is still on disk, deletes the new copy
+    /// (and its directory if left empty) and returns the existing path. Identical downloads are thus stored once.</summary>
+    private sealed class DedupingRawStore(IRawStore inner, string connectionString, ILogger? logger) : IRawStore
+    {
+        public async Task<RawFile> SaveAsync(string sourceId, string name, Stream content, CancellationToken ct)
+        {
+            var saved = await inner.SaveAsync(sourceId, name, content, ct);
+            await using var conn = new NpgsqlConnection(connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand("""
+                select f->>'path', f->>'sha256'
+                from ingest_run r cross join lateral jsonb_array_elements(r.raw_files) f
+                where r.source_id = @s and r.status = 'succeeded' and f->>'name' = @n
+                order by r.finished_at desc nulls last, r.started_at desc
+                limit 1
+                """, conn);
+            cmd.Parameters.AddWithValue("s", sourceId);
+            cmd.Parameters.AddWithValue("n", name);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (!await r.ReadAsync(ct) || r.IsDBNull(0) || r.IsDBNull(1)) return saved;
+            var (previousPath, previousSha) = (r.GetString(0), r.GetString(1));
+            if (previousSha != saved.Sha256 || previousPath == saved.Path || !File.Exists(previousPath)) return saved;
+
+            try
+            {
+                File.Delete(saved.Path);
+                var dir = Path.GetDirectoryName(saved.Path);
+                if (dir is not null && !Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger?.LogWarning(ex, "Could not delete duplicate raw file {Path}", saved.Path);
+            }
+            logger?.LogInformation("Raw file {Name} of {SourceId} is unchanged (sha256 {Sha}); reusing {Path}",
+                name, sourceId, saved.Sha256, previousPath);
+            return saved with { Path = previousPath };
+        }
     }
 }
