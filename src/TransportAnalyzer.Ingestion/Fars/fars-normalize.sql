@@ -117,6 +117,13 @@ where v.event_id = e.event_id
   and e.source_id = 'fars'
   and e.source_key in (select source_key from fars_event);
 
+-- R25: a crash NHTSA dropped from a re-released year goes too (its vehicles by cascade). Only the run's years:
+-- the source key starts with the data year.
+delete from event e
+where e.source_id = 'fars'
+  and split_part(e.source_key, '-', 1)::int = any(@years)
+  and not exists (select 1 from fars_event f where f.source_key = e.source_key);
+
 insert into event (event_id, source_id, source_key, mode, event_type, occurred_on, occurred_time, latitude, longitude,
                    state, country, severity, fatalities, serious_injuries, minor_injuries, unattributed_fatalities,
                    unattributed_serious_injuries, unattributed_minor_injuries, source_payload, ingest_run_id)

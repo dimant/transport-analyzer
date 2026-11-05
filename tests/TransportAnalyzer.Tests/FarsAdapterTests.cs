@@ -253,6 +253,44 @@ public class FarsAdapterTests(PostgresFixture db) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reingest_CrashRemovedFromRerelease_IsDeletedWithItsVehicles()
+    {
+        await AssertSucceededAsync(await IngestAsync());
+        // A crash of a year the run does not cover must survive.
+        await ExecAsync("""
+            create temp table other_year as select * from event where source_id = 'fars' and source_key = '2022-10001';
+            update other_year set event_id = gen_random_uuid(), source_key = '2021-99999';
+            insert into event select * from other_year;
+            """);
+        try
+        {
+            // NHTSA re-released 2022 without crash 10002.
+            var zip = FarsTestSource.BuildZip(2022, (_, text) =>
+                string.Join("\n", text.Split('\n').Where(l => !l.Contains(",10002,"))));
+            await AssertSucceededAsync(await IngestAsync(zip));
+
+            var keys = await RowsAsync("""
+                select source_key from event
+                where source_id = 'fars' and (source_key like '2022-%' or source_key = '2021-99999') order by source_key
+                """);
+            Assert.Equal(["2021-99999", "2022-10001", "2022-10003"], keys.Select(k => (string)k["source_key"]!));
+            var orphans = await RowAsync("""
+                select count(*) n from vehicle v
+                where not exists (select 1 from event e where e.event_id = v.event_id)
+                """);
+            Assert.Equal(0L, orphans["n"]);
+            var vehicles = await RowAsync("""
+                select count(*) n from vehicle v join event e using (event_id) where e.source_key like '2022-%'
+                """);
+            Assert.Equal(3L, vehicles["n"]);
+        }
+        finally
+        {
+            await ExecAsync("delete from event where source_id = 'fars' and source_key = '2021-99999'");
+        }
+    }
+
+    [Fact]
     public async Task Normalize_UnmappedValues_BecomeUnknownAndAreCounted()
     {
         // SPEC_USE 77 is not a FARS code; crash 10002's light truck has no body type rule for regulation or operator.
