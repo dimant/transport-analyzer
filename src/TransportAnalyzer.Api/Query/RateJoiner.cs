@@ -20,9 +20,12 @@ public static class RateJoiner
     /// from rows that have that dimension null themselves. With <c>pv</c>/<c>pr</c> the parents of the cell's vehicle
     /// and regulation class, each numerator cell takes the first exposure key present of <c>(vc, rc)</c>,
     /// <c>(vc, pr)</c>, <c>(vc, null)</c>, <c>(pv, rc)</c>, <c>(pv, pr)</c>, <c>(pv, null)</c>, <c>(null, rc)</c>,
-    /// <c>(null, pr)</c>, <c>(null, null)</c>; when grouped by vehicle class a key without a vehicle class is never
-    /// used. Cells without a match are unmatched with <see cref="NoExposure"/>; parent roll-ups that would sit beside
-    /// an exactly matched child of the same parent are unmatched with <see cref="MixedGranularity"/>.
+    /// <c>(null, pr)</c>, <c>(null, null)</c>; when grouped by vehicle class a key without a vehicle class is used only
+    /// if it has a regulation class (<c>(null, rc)</c>, <c>(null, pr)</c>), never <c>(null, null)</c>. Cells without a
+    /// match are unmatched with <see cref="NoExposure"/>; parent roll-ups that would sit beside an exactly matched child
+    /// of the same parent are unmatched with <see cref="MixedGranularity"/>, and so are the cells matched to a classless
+    /// regulation-class key <c>(null, X)</c> unless every numerator cell of that mode and year whose regulation class is
+    /// <c>X</c> or has parent <c>X</c> matched it too.
     /// </summary>
     /// <exception cref="ArgumentException">Two usable exposure cells share a key.</exception>
     public static RateResult Join(IEnumerable<NumeratorCell> numerators, IEnumerable<ExposureCell> exposure,
@@ -65,6 +68,24 @@ public static class RateJoiner
         var mixed = matches.Where(m => m.VcViaParent || m.RcViaParent).Select(m => m.Key).Distinct()
             .Where(p => exact.Any(c => IsChildOf(c, p, vehicleClassParent, regulationClassParent)))
             .ToHashSet();
+
+        // A classless regulation key reached under a vehicle-class grouping is a roll-up over vehicle class. It is valid
+        // only if all of that regulation class's cells roll up with it; otherwise its hours would be divided among a
+        // subset of the class (e.g. unknown-class Part 91 aircraft against all Part 91 hours, light aircraft against
+        // general-aviation hours).
+        if (byVehicleClass)
+        {
+            var allCells = matches.Select(m => (m.Cell.Key, Matched: (RateKey?)m.Key))
+                .Concat(unmatched.Select(u => (u.Key, Matched: (RateKey?)null))).ToList();
+            foreach (var x in matches.Where(m => m.Key.VehicleClass is null).Select(m => m.Key).Distinct())
+            {
+                var complete = allCells
+                    .Where(c => c.Key.Mode == x.Mode && c.Key.Year == x.Year && c.Key.RegulationClass is { } crc
+                        && (crc == x.RegulationClass || regulationClassParent.GetValueOrDefault(crc) == x.RegulationClass))
+                    .All(c => c.Matched == x);
+                if (!complete) mixed.Add(x);
+            }
+        }
         unmatched.AddRange(matches.Where(m => mixed.Contains(m.Key))
             .Select(m => new UnmatchedCell(m.Cell.Key, m.Cell.Value, MixedGranularity)));
 
@@ -108,10 +129,10 @@ public static class RateJoiner
         string?[] rcs = [.. new[] { rc, pr, null }.Distinct()];
         foreach (var cvc in new[] { vc, pv, null }.Distinct())
         {
-            // Grouped by class, a classless key would silently merge every class into the mode total.
-            if (byVehicleClass && cvc is null) continue;
             foreach (var crc in rcs)
             {
+                // Grouped by class, a key with neither class would silently merge every class into the mode total.
+                if (byVehicleClass && cvc is null && crc is null) continue;
                 var candidate = key with { VehicleClass = cvc, RegulationClass = crc };
                 if (denominators.ContainsKey(candidate))
                     return (candidate, cvc is not null && cvc != vc, crc is not null && crc != rc);

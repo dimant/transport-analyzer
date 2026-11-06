@@ -159,7 +159,9 @@ the numerator was matched to:
 - `vehicle_class`: the numerator's own vehicle class.
 - `vehicle_class_parent`: the parent of the numerator's vehicle class (e.g. a class rolled up to its group), because
   the exposure has no row for the class itself.
-- `regulation_class`: the numerator's own regulation class.
+- `regulation_class`: the numerator's own regulation class. Grouped by vehicle class, this can be a row without a
+  vehicle class (`vehicle_class: null`), e.g. Part 121, which the exposure files by regulation class only. The mode
+  total is still never used under a vehicle-class grouping.
 - `regulation_class_parent`: the parent of the numerator's regulation class.
 - Combinations joined with `+` when the exposure row has both, e.g. `vehicle_class+regulation_class` or
   `vehicle_class+regulation_class_parent` (vehicle class part first).
@@ -169,7 +171,9 @@ Numerators with no usable exposure are listed in `unmatched` with a `reason`:
 - `no_exposure`: no exposure row exists for the cell, its parents or the mode total (as allowed by the grouping).
 - `mixed_granularity`: the cell would roll up to a parent exposure row while another cell matched a child of that parent
   exactly, so the parent's exposure would be counted beside part of itself; all cells matched to that parent are
-  listed here instead.
+  listed here instead. Also used when, grouped by vehicle class, a cell matched a classless regulation-class row
+  (such as Part 121 passenger miles) but not every cell of that regulation class did: e.g. unknown-class Part 91
+  aircraft would otherwise be divided by all Part 91 hours while light aircraft use general-aviation hours.
 
 Casualties not attributed to any vehicle are in `unattributed`. Rates count **US events only** (`"scope": {"country": "US"}` in the response), because the BTS and FAA
 exposure is national; `/api/events/aggregate` and `/api/events/sample` are not restricted.
@@ -183,8 +187,10 @@ curl 'localhost:8080/api/rates?measure=occupant_fatalities&metric=flight_hours&f
 The FAA survey files its hours by aircraft type under the regulation class `general_aviation` only (Part 91, on-demand
 Part 135, Part 137 and Part 133 together). With `groupBy=vehicle_class` alone, no aviation numerator finds a denominator
 and every aviation class ends up in `unmatched`. With `groupBy=regulation_class`, `flight_hours` gives one row per Part
-(`part_91`, `part_135`, `part_137`, `part_133`); Part 121 and scheduled Part 135 have no flight hours. For Part 121
-against road travel, use `metric=passenger_miles&groupBy=regulation_class`.
+(`part_91`, `part_135`, `part_137`, `part_133`); Part 121 and scheduled Part 135 have no flight hours. Part 121
+against road travel works with either grouping: `metric=passenger_miles&groupBy=vehicle_class,regulation_class` returns
+Part 121 (one row, no vehicle class) beside the road vehicle classes, and `groupBy=regulation_class` returns it beside
+the road total.
 
 ## Frontend
 
