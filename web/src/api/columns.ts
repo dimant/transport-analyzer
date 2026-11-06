@@ -1,6 +1,6 @@
 import type { ColumnType } from '../stats/table'
 
-const COUNTS = ['vehicles', 'events', 'numerator', 'fatalities']
+const COUNTS = ['vehicles', 'events', 'numerator', 'fatalities', 'vehicles_with_occupant_fatality']
 const EXPOSURE = ['denominator', 'value']
 const CONTINUOUS = ['occupants', 'crew_count', 'vehicle_age_years', 'year_built', 'standard_error']
 
@@ -33,6 +33,8 @@ export const VOCAB_ATTRIBUTE: Record<string, string> = {
 }
 
 export const COLUMN_HELP: Record<string, string> = {
+  rate_class: 'The class the exposure row is defined for: the vehicle class, the regulation class, both, or the mode total when neither applies.',
+  vehicles_with_occupant_fatality: 'Vehicles in which at least one occupant died.',
   numerator: 'The number of events or fatalities counted for this row, before any division by exposure.',
   denominator: 'The exposure the numerator is divided by, in raw units (passenger-miles, vehicle-miles or flight hours).',
   join_level: 'The exposure key the numerator was matched to: mode, vehicle_class, vehicle_class_parent, regulation_class, regulation_class_parent, or a combination joined with + such as vehicle_class+regulation_class.',

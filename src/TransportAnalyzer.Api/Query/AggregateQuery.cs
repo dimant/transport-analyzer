@@ -31,6 +31,7 @@ public sealed class AggregateQuery
         ("nonoccupant_fatalities", "coalesce(sum(v.nonoccupant_fatalities), 0)"),
         ("nonoccupant_serious_injuries", "coalesce(sum(v.nonoccupant_serious_injuries), 0)"),
         ("nonoccupant_minor_injuries", "coalesce(sum(v.nonoccupant_minor_injuries), 0)"),
+        ("vehicles_with_occupant_fatality", "count(*) filter (where v.occupant_fatalities > 0)"),
     ];
 
     private static readonly Dictionary<string, Grain> Grains = new(StringComparer.Ordinal)

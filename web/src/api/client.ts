@@ -59,6 +59,17 @@ async function getJson<T>(url: string, fetchFn: typeof fetch): Promise<T> {
   return JSON.parse(text) as T
 }
 
+/** Adds `rate_class` after `regulation_class`: the non-null vehicle and regulation class joined, else the mode. */
+function withRateClass(columns: string[], rows: unknown[][]): { columns: string[]; rows: unknown[][] } {
+  const at = columns.indexOf('regulation_class') + 1
+  const [m, v, g] = ['mode', 'vehicle_class', 'regulation_class'].map((c) => columns.indexOf(c))
+  const rateClass = (row: unknown[]) => [row[v], row[g]].filter((x) => x != null).join(' · ') || (row[m] ?? null)
+  return {
+    columns: [...columns.slice(0, at), 'rate_class', ...columns.slice(at)],
+    rows: rows.map((row) => [...row.slice(0, at), rateClass(row), ...row.slice(at)]),
+  }
+}
+
 function tableOf(columns: string[], rows: unknown[][], meta: Record<string, string> = {}): Table {
   const types: Record<string, ColumnType> = {}
   for (const c of columns) types[c] = columnType(c)
@@ -76,7 +87,8 @@ export async function runQuery(q: Query, fetchFn: typeof fetch = fetch): Promise
   const data = await getJson<Record<string, unknown>>(buildUrl(q), fetchFn)
   if (q.endpoint === 'rates') {
     const r = data as unknown as RatesResponse
-    const table = tableOf(r.columns, r.rows, { endpoint: 'rates', measure: q.measure, metric: q.metric })
+    const withClass = withRateClass(r.columns, r.rows)
+    const table = tableOf(withClass.columns, withClass.rows, { endpoint: 'rates', measure: q.measure, metric: q.metric })
     const notices: Notice[] = [{ kind: 'scope', text: 'US events only' }]
     if (r.unmatched?.length) {
       const cols = ['mode', 'year', 'vehicle_class', 'regulation_class', 'numerator', 'reason']

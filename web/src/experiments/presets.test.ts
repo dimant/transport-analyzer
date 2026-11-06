@@ -6,10 +6,11 @@ import { fromRows, type Table } from '../stats/table'
 import { PRESETS } from './presets'
 import type { Experiment } from './storage'
 
-const RATES_COLUMNS = ['mode', 'year', 'vehicle_class', 'regulation_class', 'numerator', 'denominator', 'join_level', 'exposure_source', 'provenance']
+const RATES_COLUMNS = ['mode', 'year', 'vehicle_class', 'regulation_class', 'rate_class', 'numerator', 'denominator', 'join_level', 'exposure_source', 'provenance']
 const VEHICLE_COUNTS = [
   'vehicles', 'events', 'occupant_fatalities', 'occupant_serious_injuries', 'occupant_minor_injuries',
   'nonoccupant_fatalities', 'nonoccupant_serious_injuries', 'nonoccupant_minor_injuries',
+  'vehicles_with_occupant_fatality',
 ]
 
 function columnsOf(q: Experiment['query']): string[] {

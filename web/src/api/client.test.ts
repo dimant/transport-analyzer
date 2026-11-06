@@ -53,6 +53,16 @@ describe('runQuery', () => {
     expect(r.table.meta.metric).toBe('passenger_miles')
     expect(r.table.meta.measure).toBe('occupant_fatalities')
   })
+  it('rates_addsRateClass', async () => {
+    const columns = ['mode', 'year', 'vehicle_class', 'regulation_class', 'numerator']
+    const rows = [['highway', 2022, 'light_duty', null, 1], ['aviation', 2022, null, 'part_121', 2], ['highway', 2022, null, null, 3]]
+    const r = await runQuery(ratesQuery, fake(200, { columns, rows, unmatched: [], unattributed: [] }))
+    const names = r.table.columns.map((c) => c.name)
+    expect(names.indexOf('rate_class')).toBe(names.indexOf('regulation_class') + 1)
+    const rc = r.table.columns.find((c) => c.name === 'rate_class')!
+    expect(rc.type).toBe('categorical')
+    expect(rc.type === 'categorical' && rc.values).toEqual(['light_duty', 'part_121', 'highway'])
+  })
   it('runQuery_sample_notice', async () => {
     const f = fake(200, { columns: ['source_id', 'occupant_fatalities'], rows: [['a', 1]], total: 50, n: 1, seed: 7 })
     const r = await runQuery({ endpoint: 'sample', from: 'a', to: 'b', n: 1, seed: 7, filters: {} }, f)

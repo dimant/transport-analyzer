@@ -77,7 +77,8 @@ public class AggregateTests(AggregateFixture fx) : IClassFixture<AggregateFixtur
 
         Assert.Equal("vehicle", t.Grain);
         Assert.Equal(["vehicle_class", "vehicles", "events", "occupant_fatalities", "occupant_serious_injuries",
-            "occupant_minor_injuries", "nonoccupant_fatalities", "nonoccupant_serious_injuries", "nonoccupant_minor_injuries"],
+            "occupant_minor_injuries", "nonoccupant_fatalities", "nonoccupant_serious_injuries", "nonoccupant_minor_injuries",
+            "vehicles_with_occupant_fatality"],
             t.Columns);
         var car = t.RowWhere("vehicle_class", "passenger_car");
         Assert.Equal(2, t.Long(car, "vehicles"));
@@ -87,6 +88,42 @@ public class AggregateTests(AggregateFixture fx) : IClassFixture<AggregateFixtur
         Assert.Equal(1, t.Long(t.RowWhere("vehicle_class", "heavy_truck"), "occupant_serious_injuries"));
         Assert.Equal(["heavy_truck", "light_truck", "passenger_car"],
             t.Rows.Select(r => t.Cell(r, "vehicle_class").GetString()));
+    }
+
+    [Fact]
+    public async Task Aggregate_VehiclesWithOccupantFatality_CountsVehiclesNotDeaths()
+    {
+        const string query = $"{Year2022}&grain=vehicle&groupBy=vehicle_class&f.source_id=ntsb";
+        var before = await GetAsync(query);
+        await using var conn = new NpgsqlConnection(fx.ConnectionString);
+        await conn.OpenAsync();
+        try
+        {
+            await using var insert = new NpgsqlCommand("""
+                insert into event (event_id, source_id, source_key, mode, event_type, occurred_on, country, severity, fatalities,
+                                   serious_injuries, minor_injuries, unattributed_fatalities, source_payload, ingest_run_id)
+                values ('00000000-0000-0000-0000-0000000000a2', 'ntsb', 'T2-VWOF', 'aviation', 'accident', date '2022-07-01',
+                        'US', 'fatal', 3, 0, 0, 0, '{}', gen_random_uuid());
+                insert into vehicle (vehicle_id, event_id, vehicle_no, vehicle_class, operator_type, regulation_class,
+                                     maintenance_regime, occupant_fatalities, source_payload, ingest_run_id)
+                select gen_random_uuid(), '00000000-0000-0000-0000-0000000000a2', n, 'unknown', 'unknown', 'unknown',
+                       'unknown', f, '{}', gen_random_uuid()
+                from (values (1, 2), (2, 0), (3, 1)) as v(n, f);
+                """, conn);
+            await insert.ExecuteNonQueryAsync();
+
+            var after = await GetAsync(query);
+            long Of(Table t, string column) =>
+                t.Rows.Where(r => t.Cell(r, "vehicle_class").GetString() == "unknown").Sum(r => t.Long(r, column));
+            Assert.Equal(3, Of(after, "vehicles") - Of(before, "vehicles"));
+            Assert.Equal(3, Of(after, "occupant_fatalities") - Of(before, "occupant_fatalities"));
+            Assert.Equal(2, Of(after, "vehicles_with_occupant_fatality") - Of(before, "vehicles_with_occupant_fatality"));
+        }
+        finally
+        {
+            await using var cleanup = new NpgsqlCommand("delete from event where source_id = 'ntsb' and source_key = 'T2-VWOF'", conn);
+            await cleanup.ExecuteNonQueryAsync();
+        }
     }
 
     [Fact]
