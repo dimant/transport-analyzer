@@ -28,7 +28,7 @@ skipped; 187 tests passed, 14 skipped). Presets 1–6 give the same numbers as i
 ## Step 3: Numbers per preset
 
 Columns: the ratio, its 95% interval, the two-sided Wald p, and the events and exposure (or trials) of that level. A
-reference level has ratio 1 and no interval. A p of 0 is below double precision (the app shows it as 0).
+reference level has ratio 1 and no interval. A p of 0 is below double precision (the app shows it as < 1e-300).
 
 ### Preset 7: Deaths per passenger-mile by vehicle class, airlines included, adjusted for year
 
@@ -56,8 +56,9 @@ dispersion 2.82; AIC 289.1; baseline rate 0.490 per 100M (light-duty, 2019); con
 
 Under `poisson` (same covariates): **Pearson dispersion 16.66** on 16 df, deviance 257.3, with the warning "Pearson
 dispersion 16.66 exceeds 1.5: counts vary more than Poisson allows, so these intervals are too narrow. Try family
-negative_binomial." Point estimates barely move (part_121 0.000236 [0.0000887, 0.000630], motorcycle 47.6 [47.0, 48.2]);
-the road intervals are much narrower (year 2020 1.20 [1.18, 1.22]), which is the overdispersion the preset avoids.
+negative_binomial." The class ratios barely move (part_121 0.000236 [0.0000887, 0.000630], motorcycle 47.6 [47.0, 48.2]), but the year
+ratios do (2020: 1.09 under negative binomial, 1.20 [1.18, 1.22] under Poisson), and the road intervals are much
+narrower, which is the overdispersion the preset avoids.
 
 Reading: holding year fixed, a Part 121 passenger-mile carries about 1/4,250 of the light-duty death rate. The
 like-for-like large-vehicle comparison the note suggests, part_121 against bus, is 0.000235 / 0.0111 ≈ 0.021: about 1/47
@@ -123,7 +124,8 @@ outcome `vehicles_with_occupant_fatality` out of `vehicles`, covariates `vehicle
 | vehicle_class | passenger_car | 1.69 | 1.66 | 1.72 | 0 | 60,987 | 106,634 |
 | vehicle_class | unknown | 0.720 | 0.444 | 1.17 | 0.18 | 46 | 86 |
 
-(The app shows the age ratio and its bounds as 1.06 at 3 significant digits; the 5-digit values are from the same fit.)
+(The app shows a ratio and its bounds with the fewest significant figures, 3 to 6, that tell them apart: 4 for the
+age ratio here. The 5-digit values are from the same fit.)
 
 Summary: 443 rows used; 8 parameters; deviance 1,789 on 435 residual df; Pearson dispersion 8.46; AIC 3,181; baseline
 probability 0.305 (a light truck of age 0); converged yes. **Warnings:**

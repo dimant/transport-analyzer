@@ -46,6 +46,14 @@ export const COLUMN_HELP: Record<string, string> = {
   hi: 'Upper bound of the confidence interval. For a rate, the exact (Garwood) Poisson interval; for a rate ratio or odds ratio, the Wald interval on the log scale, exp(β + z·se).',
   estimate:
     'The rate ratio or odds ratio for this level against the reference level, with the other covariates held fixed; for a numeric covariate, the ratio per unit. 1 means no difference.',
-  p: 'Two-sided Wald p-value for the ratio being 1.',
+  p: 'Two-sided Wald p-value for the ratio being 1. Values too small to represent are shown as < 1e-300.',
+  term: 'The covariate the row belongs to; (intercept) is the baseline the ratios multiply.',
+  level: 'The level of the covariate this row compares with the reference level; per unit for a numeric covariate.',
+  events:
+    'The number of events counted. In a regression table, the events (or cases with the outcome) at this level, or in all rows used for a numeric covariate.',
+  size: 'In a regression table, the exposure (or number of cases) at this level, or in all rows used for a numeric covariate.',
+  label: 'The name of the fit statistic in this row of the regression summary.',
+  value:
+    'The amount of exposure for an exposure row; in a regression summary, the value of the statistic named in label.',
   note: 'Why a row has no estimate: reference marks the level the others are compared with; not estimable means the level had no events (or all or none had the outcome); aliased means its column duplicates other covariates, so the data cannot separate them.',
 }

@@ -9,7 +9,7 @@ export type Bindings = Record<string, string | string[] | undefined>
 export type Cell = string | number | null
 export interface TableSpec {
   kind: 'table'
-  columns: { key: string; label: string; format: 'integer' | 'number' | 'rate' | 'percent' | 'text' }[]
+  columns: { key: string; label: string; format: 'integer' | 'number' | 'rate' | 'ratio' | 'p' | 'percent' | 'text' }[]
   rows: Record<string, Cell>[]
 }
 export interface HeatmapSpec {

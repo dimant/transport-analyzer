@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { renderRegression } from '../stats/regression'
 import { buildGlossary } from './glossary'
 import type { Source, Vocabulary } from './types'
 
@@ -22,5 +23,11 @@ describe('glossary', () => {
     const g = buildGlossary(vocab, sources)
     expect(g.help('join_level')).toContain('regulation_class_parent')
     expect(g.help('make')).toBeUndefined()
+  })
+  it('glossary_help_coversRegressionColumns', () => {
+    const g = buildGlossary(vocab, sources)
+    const result = { ratioName: 'rate ratio' as const, eventsLabel: 'fatalities', sizeLabel: 'passenger_miles', confidence: 0.95, terms: [], reference: '', summary: [], warnings: [] }
+    const [terms, , summary] = renderRegression(result)
+    for (const c of [...terms.columns, ...summary.columns]) expect(g.help(c.key), c.key).toBeTruthy()
   })
 })

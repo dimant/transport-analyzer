@@ -40,4 +40,21 @@ describe('TableView', () => {
     expect(text).toContain('25.0%')
     expect(text).toContain('100.0%')
   })
+
+  it('TableView_ratioColumns_readApartWithinARow', () => {
+    const ratios: TableSpec = {
+      kind: 'table',
+      columns: [
+        { key: 'estimate', label: 'odds ratio', format: 'ratio' },
+        { key: 'lo', label: 'lo', format: 'ratio' },
+        { key: 'hi', label: 'hi', format: 'ratio' },
+        { key: 'p', label: 'p', format: 'p' },
+      ],
+      rows: [{ estimate: 1.0563, lo: 1.0551, hi: 1.0575, p: 0 }, { estimate: 0.5, lo: 0.24443036, hi: 1.02284, p: 0.06 }],
+    }
+    const { container } = render(TableView, { spec: ratios })
+    const row = (i: number) => [...container.querySelectorAll(`tbody tr:nth-child(${i}) td`)].map((td) => td.textContent)
+    expect(row(1)).toEqual(['1.056', '1.055', '1.058', '< 1e-300'])
+    expect(row(2)).toEqual(['0.5', '0.244', '1.02', '0.06'])
+  })
 })

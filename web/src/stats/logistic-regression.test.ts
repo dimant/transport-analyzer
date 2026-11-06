@@ -24,9 +24,9 @@ describe('logistic-regression', () => {
     expect(rel(e.hi, 10.60074532)).toBeLessThan(1e-5)
     expect(r.ratioName).toBe('odds ratio')
     expect(r.reference).toBe('g=unexposed')
-    expect(rel(summary(r, 'baseline probability') as number, 10 / 200)).toBeLessThan(1e-6)
+    expect(rel(summary(r, 'baseline probability (reference levels, numeric covariates at 0)') as number, 10 / 200)).toBeLessThan(1e-6)
     expect(r.summary.map((s) => s.label)).toEqual([
-      'rows used', 'parameters', 'deviance', 'residual df', 'Pearson dispersion', 'AIC', 'baseline probability', 'converged',
+      'rows used', 'parameters', 'deviance', 'residual df', 'Pearson dispersion', 'AIC', 'baseline probability (reference levels, numeric covariates at 0)', 'converged',
     ])
     expect(r.warnings).toEqual([])
   })

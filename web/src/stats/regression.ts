@@ -1,10 +1,10 @@
 import type { Design } from './design'
 import { normalQuantile, normalTwoSidedP } from './distributions'
 import type { GlmFit } from './glm'
+import { formatValue, type Format } from './format'
 import type { Cell, ForestSpec, TableSpec } from './method'
 
 export interface RegressionTerm { term: string; level: string; estimate: number | null; lo: number | null; hi: number | null; p: number | null; events: number; size: number; note: string }
-type Format = TableSpec['columns'][number]['format']
 // format defaults to 3 significant figures for numbers and text otherwise
 export interface SummaryRow { label: string; value: Cell; format?: Format }
 export interface RegressionResult {
@@ -90,42 +90,18 @@ export function referenceOf(terms: RegressionTerm[]): string {
   return terms.filter((t) => t.note === REFERENCE).map((t) => `${t.term}=${t.level}`).join(', ')
 }
 
-// Mirrors render/format (stats cannot import it), so each summary row keeps its own format.
-const INT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
-const ONE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
-const RATE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 20 })
-const PERCENT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-function formatCell(v: Cell, format: Format | undefined): string {
-  if (v === null || (typeof v === 'number' && Number.isNaN(v))) return '—'
-  if (typeof v === 'string') return v
-  switch (format ?? 'rate') {
-    case 'integer':
-      return INT.format(v)
-    case 'number':
-      return ONE.format(v)
-    case 'percent':
-      return `${PERCENT.format(v * 100)}%`
-    case 'text':
-      return String(v)
-    case 'rate':
-      if (v === 0) return '0'
-      if (Math.abs(v) < 1e-6) return v.toExponential(2)
-      return RATE.format(Number(v.toPrecision(3)))
-  }
-}
-
 export function renderRegression(r: RegressionResult): [TableSpec, ForestSpec, TableSpec] {
   const terms: TableSpec = {
     kind: 'table',
     columns: [
       { key: 'term', label: 'term', format: 'text' },
       { key: 'level', label: 'level', format: 'text' },
-      { key: 'estimate', label: r.ratioName, format: 'rate' },
-      { key: 'lo', label: 'lo', format: 'rate' },
-      { key: 'hi', label: 'hi', format: 'rate' },
-      { key: 'p', label: 'p', format: 'rate' },
+      { key: 'estimate', label: r.ratioName, format: 'ratio' },
+      { key: 'lo', label: 'lo', format: 'ratio' },
+      { key: 'hi', label: 'hi', format: 'ratio' },
+      { key: 'p', label: 'p', format: 'p' },
       { key: 'events', label: r.eventsLabel, format: 'integer' },
-      { key: 'size', label: r.sizeLabel, format: 'number' },
+      { key: 'size', label: r.sizeLabel, format: 'integer' },
       { key: 'note', label: 'note', format: 'text' },
     ],
     rows: r.terms.map((t) => ({ ...t })),
@@ -136,7 +112,7 @@ export function renderRegression(r: RegressionResult): [TableSpec, ForestSpec, T
     estimate: 'estimate',
     lo: 'lo',
     hi: 'hi',
-    xLabel: `${r.ratioName} (${Number((r.confidence * 100).toPrecision(12))}% CI)`,
+    xLabel: validConfidence(r.confidence) ? `${r.ratioName} (${Number((r.confidence * 100).toPrecision(12))}% CI)` : r.ratioName,
     caption: `relative to ${r.reference}`,
     data: r.terms
       .filter((t) => !t.note.startsWith(REFERENCE))
@@ -148,7 +124,7 @@ export function renderRegression(r: RegressionResult): [TableSpec, ForestSpec, T
       { key: 'label', label: 'label', format: 'text' },
       { key: 'value', label: 'value', format: 'text' },
     ],
-    rows: r.summary.map((s) => ({ label: s.label, value: formatCell(s.value, s.format) })),
+    rows: r.summary.map((s) => ({ label: s.label, value: formatValue(s.value, s.format ?? (typeof s.value === 'string' ? 'text' : 'rate')) })),
   }
   return [terms, forest, summary]
 }

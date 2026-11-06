@@ -105,6 +105,18 @@ describe('plot', () => {
     const titles = [...el.querySelectorAll('[aria-label="dot"] title')].map((t) => t.textContent)
     expect(titles.some((t) => t!.startsWith('b:') && t!.includes('no interval'))).toBe(true)
   })
+  it('forest_closeRatios_tooltipAndTicksReadApart', () => {
+    const spec: ForestSpec = {
+      kind: 'forest', label: 'term', estimate: 'est', lo: 'lo', hi: 'hi', xLabel: 'odds ratio (95% CI)',
+      data: [{ term: 'age', est: 1.0563, lo: 1.0551, hi: 1.0575 }],
+    }
+    const el = renderPlot(spec, { width: 600 })
+    expect(el.querySelector('[aria-label="dot"] title')!.textContent).toBe('age: 1.056 (1.055 – 1.058)')
+    const close = renderPlot({ ...spec, data: [{ term: 'x', est: 1.0004, lo: 1.0002, hi: 1.0006 }] }, { width: 600 })
+    const ticks = [...close.querySelectorAll('[aria-label="x-axis tick label"] text')].map((t) => t.textContent).filter(Boolean)
+    expect(ticks.length).toBeGreaterThan(1)
+    expect(new Set(ticks).size).toBe(ticks.length)
+  })
   it('forest_longLabel_widensMarginAndKeepsFullTitle', () => {
     const long = 'vehicle_class: light_aircraft · general_aviation'
     const spec: ForestSpec = {

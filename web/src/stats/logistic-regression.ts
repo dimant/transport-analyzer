@@ -68,7 +68,7 @@ export const logisticRegression: Method<LogisticParams, RegressionResult> = {
       { label: 'residual df', value: df, format: 'integer' },
       { label: 'Pearson dispersion', value: dispersion },
       { label: 'AIC', value: -2 * fit.logLik + 2 * parameters },
-      { label: 'baseline probability', value: Number.isFinite(baseline) ? baseline : null },
+      { label: 'baseline probability (reference levels, numeric covariates at 0)', value: Number.isFinite(baseline) ? baseline : null },
       { label: 'converged', value: fit.converged ? 'yes' : 'no' },
     ]
 

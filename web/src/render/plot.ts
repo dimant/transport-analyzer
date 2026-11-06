@@ -135,10 +135,16 @@ function forest(spec: ForestSpec, width: number): Element {
   const ruled = rows.filter(hasInterval)
   const unbounded = rows.filter((d) => !hasInterval(d))
   if (unbounded.length) notes.push(`no interval: ${unbounded.map(y).join(', ')}`)
-  const title = (d: Row) =>
-    hasInterval(d)
-      ? `${y(d)}: ${formatValue(est(d), 'rate')} (${formatValue(num(d[spec.lo]), 'rate')} – ${formatValue(num(d[spec.hi]), 'rate')})`
-      : `${y(d)}: ${formatValue(est(d), 'rate')} (no interval)`
+  const title = (d: Row) => {
+    if (!hasInterval(d)) return `${y(d)}: ${formatValue(est(d), 'ratio')} (no interval)`
+    const peers = [est(d), num(d[spec.lo]), num(d[spec.hi])]
+    const [e, lo, hi] = peers.map((v) => formatValue(v, 'ratio', peers))
+    return `${y(d)}: ${e} (${lo} – ${hi})`
+  }
+  // tick labels get the digits that tell apart the ticks of a linear scale over the plotted extent: a log axis spanning
+  // less than a decade uses those ticks, and wider ones read apart at 3 figures anyway
+  const extent = [1, ...rows.map(est), ...ruled.flatMap((d) => [num(d[spec.lo]), num(d[spec.hi])])] as number[]
+  const tickPeers = linearTicks(Math.min(...extent), Math.max(...extent), 6)
   // room for the longest label, capped at half the plot; longer labels are cut with an ellipsis
   const maxLen = Math.max(0, ...rows.map((d) => y(d).length))
   const marginLeft = Math.max(120, Math.min(0.5 * width, 7 * maxLen + 16))
@@ -148,7 +154,7 @@ function forest(spec: ForestSpec, width: number): Element {
   const plot = Plot.plot({
     width,
     marginLeft,
-    x: { type: 'log', label: spec.xLabel, grid: true, ticks: 6, tickFormat: (v: number) => formatValue(v, 'rate') },
+    x: { type: 'log', label: spec.xLabel, grid: true, ticks: 6, tickFormat: (v: number) => formatValue(v, 'ratio', tickPeers) },
     y: { type: 'band', label: null, domain: rows.map(y), tickFormat: shorten },
     marks: [
       Plot.ruleX([1], { strokeDasharray: '4 3', stroke: 'gray' }),
@@ -157,4 +163,16 @@ function forest(spec: ForestSpec, width: number): Element {
     ],
   })
   return wrap(plot, notes)
+}
+
+/** The ticks of a linear scale over [lo, hi], at the 1, 2 or 5 × 10^k step D3 picks for about `count` ticks. */
+function linearTicks(lo: number, hi: number, count: number): number[] {
+  if (!(hi > lo)) return [lo]
+  const raw = (hi - lo) / count
+  const power = Math.floor(Math.log10(raw))
+  const error = raw / 10 ** power
+  const step = (error >= Math.sqrt(50) ? 10 : error >= Math.sqrt(10) ? 5 : error >= Math.sqrt(2) ? 2 : 1) * 10 ** power
+  const ticks: number[] = []
+  for (let i = Math.ceil(lo / step); i * step <= hi; i++) ticks.push(Number((i * step).toPrecision(12)))
+  return ticks
 }

@@ -60,8 +60,8 @@ describe('poisson-regression', () => {
 
     const [terms, forest, sum] = poissonRegression.render(r) as [TableSpec, ForestSpec, TableSpec]
     expect(terms.columns.map((c) => [c.key, c.format])).toEqual([
-      ['term', 'text'], ['level', 'text'], ['estimate', 'rate'], ['lo', 'rate'], ['hi', 'rate'], ['p', 'rate'],
-      ['events', 'integer'], ['size', 'number'], ['note', 'text'],
+      ['term', 'text'], ['level', 'text'], ['estimate', 'ratio'], ['lo', 'ratio'], ['hi', 'ratio'], ['p', 'p'],
+      ['events', 'integer'], ['size', 'integer'], ['note', 'text'],
     ])
     expect(terms.columns[2].label).toBe('rate ratio')
     expect(terms.rows).toHaveLength(2)
@@ -214,6 +214,7 @@ describe('poisson-regression', () => {
       expect(rel(a.estimate, 0.5)).toBeLessThan(1e-6)
       expect(a.lo).toBeNull()
       expect(a.hi).toBeNull()
+      expect((poissonRegression.render(r)[1] as ForestSpec).xLabel).toBe('rate ratio')
     }
   })
 
