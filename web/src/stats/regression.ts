@@ -4,6 +4,9 @@ import type { GlmFit } from './glm'
 import type { Cell, ForestSpec, TableSpec } from './method'
 
 export interface RegressionTerm { term: string; level: string; estimate: number | null; lo: number | null; hi: number | null; p: number | null; events: number; size: number; note: string }
+type Format = TableSpec['columns'][number]['format']
+// format defaults to 3 significant figures for numbers and text otherwise
+export interface SummaryRow { label: string; value: Cell; format?: Format }
 export interface RegressionResult {
   ratioName: 'rate ratio' | 'odds ratio'
   eventsLabel: string
@@ -11,24 +14,41 @@ export interface RegressionResult {
   confidence: number
   terms: RegressionTerm[]
   reference: string // 'vehicle_class=light_duty, year=2019'
-  summary: { label: string; value: Cell }[]
+  summary: SummaryRow[]
   warnings: string[]
 }
 
 const INTERCEPT = '(intercept)'
 const PER_UNIT = 'per unit'
+const REFERENCE = 'reference'
+const ALIASED = 'aliased with other covariates'
+const FIT_FAILED = 'not estimable: fit did not converge'
 
-/** One term per design level, and one per continuous covariate, as exp(β) with a Wald interval. */
+export const validConfidence = (c: number) => c > 0 && c < 1
+export const CONFIDENCE_WARNING = 'confidence must be between 0 and 1'
+
+/**
+ * One term per design level, and one per continuous covariate, as exp(β) with a Wald interval.
+ * Intervals are null when confidence is outside (0, 1).
+ */
 export function termsFromFit(design: Design, fit: GlmFit, confidence: number): RegressionTerm[] {
-  const z = normalQuantile(1 - (1 - confidence) / 2)
+  const z = validConfidence(confidence) ? normalQuantile(1 - (1 - confidence) / 2) : NaN
   const notEstimable = design.sizeKind === 'trials' ? 'not estimable: all or none had the outcome' : 'not estimable: no events'
   const colIndex = new Map(design.columns.map((c, j) => [`${c.term}\0${c.level ?? ''}`, j]))
   const blank = { estimate: null, lo: null, hi: null, p: null }
+  const finiteOrNull = (v: number) => (Number.isFinite(v) ? v : null)
   const fromColumn = (j: number): Pick<RegressionTerm, 'estimate' | 'lo' | 'hi' | 'p' | 'note'> => {
     const b = fit.beta[j]
     const se = fit.se[j]
-    if (fit.aliased[j] || !Number.isFinite(b) || !Number.isFinite(se)) return { ...blank, note: 'aliased with other covariates' }
-    return { estimate: Math.exp(b), lo: Math.exp(b - z * se), hi: Math.exp(b + z * se), p: normalTwoSidedP(b / se), note: '' }
+    if (fit.aliased[j]) return { ...blank, note: ALIASED }
+    if (!Number.isFinite(b) || !Number.isFinite(se)) return { ...blank, note: FIT_FAILED }
+    return {
+      estimate: Math.exp(b),
+      lo: finiteOrNull(Math.exp(b - z * se)),
+      hi: finiteOrNull(Math.exp(b + z * se)),
+      p: normalTwoSidedP(b / se),
+      note: '',
+    }
   }
 
   let events = 0
@@ -44,14 +64,52 @@ export function termsFromFit(design: Design, fit: GlmFit, confidence: number): R
   })
   for (const l of design.levels) {
     const base = { term: l.term, level: l.level, events: l.events, size: l.size }
-    if (l.status === 'reference') add({ ...base, estimate: 1, lo: null, hi: null, p: null, note: 'reference' })
+    if (l.status === 'reference') add({ ...base, estimate: 1, lo: null, hi: null, p: null, note: REFERENCE })
     else if (l.status === 'not_estimable') add({ ...base, ...blank, note: notEstimable })
     else {
       const j = colIndex.get(`${l.term}\0${l.level}`)
-      add({ ...base, ...(j === undefined ? { ...blank, note: 'aliased with other covariates' } : fromColumn(j)) })
+      add({ ...base, ...(j === undefined ? { ...blank, note: ALIASED } : fromColumn(j)) })
     }
   }
+  // A term with no level left in the model is not a reference for anything.
+  for (const terms of byTerm.values()) {
+    const ref = terms.find((t) => t.note === REFERENCE)
+    if (!ref) continue
+    const others = terms.filter((t) => t !== ref)
+    if (others.some((t) => t.note !== ALIASED && t.note !== notEstimable)) continue
+    ref.estimate = null
+    ref.note = others.some((t) => t.note === ALIASED) ? `${REFERENCE}; term ${ALIASED}` : `${REFERENCE}; term not in the model`
+  }
   return [...byTerm.values()].flat()
+}
+
+/** The reference levels the ratios are relative to, as 'term=level, term=level'. */
+export function referenceOf(terms: RegressionTerm[]): string {
+  return terms.filter((t) => t.note === REFERENCE).map((t) => `${t.term}=${t.level}`).join(', ')
+}
+
+// Mirrors render/format (stats cannot import it), so each summary row keeps its own format.
+const INT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+const ONE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
+const RATE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 20 })
+const PERCENT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+function formatCell(v: Cell, format: Format | undefined): string {
+  if (v === null || (typeof v === 'number' && Number.isNaN(v))) return '—'
+  if (typeof v === 'string') return v
+  switch (format ?? 'rate') {
+    case 'integer':
+      return INT.format(v)
+    case 'number':
+      return ONE.format(v)
+    case 'percent':
+      return `${PERCENT.format(v * 100)}%`
+    case 'text':
+      return String(v)
+    case 'rate':
+      if (v === 0) return '0'
+      if (Math.abs(v) < 1e-6) return v.toExponential(2)
+      return RATE.format(Number(v.toPrecision(3)))
+  }
 }
 
 export function renderRegression(r: RegressionResult): [TableSpec, ForestSpec, TableSpec] {
@@ -79,16 +137,16 @@ export function renderRegression(r: RegressionResult): [TableSpec, ForestSpec, T
     xLabel: `${r.ratioName} (${Number((r.confidence * 100).toPrecision(12))}% CI)`,
     caption: `relative to ${r.reference}`,
     data: r.terms
-      .filter((t) => t.note !== 'reference')
+      .filter((t) => !t.note.startsWith(REFERENCE))
       .map((t) => ({ label: `${t.term}: ${t.level}`, estimate: t.estimate, lo: t.lo, hi: t.hi, note: t.note })),
   }
   const summary: TableSpec = {
     kind: 'table',
     columns: [
       { key: 'label', label: 'label', format: 'text' },
-      { key: 'value', label: 'value', format: 'rate' },
+      { key: 'value', label: 'value', format: 'text' },
     ],
-    rows: r.summary.map((s) => ({ label: s.label, value: s.value })),
+    rows: r.summary.map((s) => ({ label: s.label, value: formatCell(s.value, s.format) })),
   }
   return [terms, forest, summary]
 }

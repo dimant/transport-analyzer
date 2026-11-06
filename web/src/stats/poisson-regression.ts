@@ -2,13 +2,15 @@ import { buildDesign } from './design'
 import { fitGlm, fitNegativeBinomial, type GlmFit } from './glm'
 import type { Bindings, Method, RenderSpec } from './method'
 import { formatPer } from './rate'
-import { renderRegression, termsFromFit, type RegressionResult } from './regression'
+import { CONFIDENCE_WARNING, referenceOf, renderRegression, termsFromFit, validConfidence, type RegressionResult } from './regression'
 import { categoryLabel, column, naturalCompare, type Table } from './table'
 
 export type PoissonParams = { family: 'poisson' | 'negative_binomial'; confidence: number; per: number }
 
 const asList = (v: string | string[] | undefined): string[] => (v === undefined || v === '' ? [] : Array.isArray(v) ? v : [v])
 const DISPERSION_LIMIT = 1.5
+// a saturated fit leaves rounding noise in the deviance
+const DEVIANCE_ZERO = 1e-9
 
 /** Distinct "exposure_source (provenance)" over the rows, or null when the table lacks either column. */
 function exposureSources(table: Table, rows: number[]): string | null {
@@ -49,19 +51,20 @@ export const poissonRegression: Method<PoissonParams, RegressionResult> = {
     const exposureName = b.exposure as string
     const design = buildDesign(table, { response: eventsName, size: exposureName, sizeKind: 'exposure', covariates: asList(b.covariates) })
     const warnings = [...design.warnings]
+    if (!validConfidence(p.confidence)) warnings.push(CONFIDENCE_WARNING)
     const result: RegressionResult = {
       ratioName: 'rate ratio',
       eventsLabel: table.meta.measure ?? eventsName,
       sizeLabel: table.meta.metric ?? exposureName,
       confidence: p.confidence,
       terms: [],
-      reference: design.levels.filter((l) => l.status === 'reference').map((l) => `${l.term}=${l.level}`).join(', '),
+      reference: '',
       summary: [],
       warnings,
     }
     if (design.rows.length === 0) {
       warnings.push('No rows left to fit.')
-      result.summary = [{ label: 'family', value: p.family }, { label: 'rows used', value: 0 }]
+      result.summary = [{ label: 'family', value: p.family }, { label: 'rows used', value: 0, format: 'integer' }]
       return result
     }
 
@@ -85,12 +88,13 @@ export const poissonRegression: Method<PoissonParams, RegressionResult> = {
     // the intercept is the log rate at every reference level
     const baseline = Math.exp(fit.beta[0]) * p.per
     result.terms = termsFromFit(design, fit, p.confidence)
+    result.reference = referenceOf(result.terms)
     result.summary = [
       { label: 'family', value: familyText },
-      { label: 'rows used', value: design.rows.length },
-      { label: 'parameters', value: parameters },
-      { label: 'deviance', value: fit.deviance },
-      { label: 'residual df', value: df },
+      { label: 'rows used', value: design.rows.length, format: 'integer' },
+      { label: 'parameters', value: parameters, format: 'integer' },
+      { label: 'deviance', value: Math.abs(fit.deviance) < DEVIANCE_ZERO ? 0 : fit.deviance },
+      { label: 'residual df', value: df, format: 'integer' },
       { label: 'Pearson dispersion', value: dispersion },
       { label: 'AIC', value: -2 * fit.logLik + 2 * (parameters + extraParameters) },
       { label: `baseline rate per ${formatPer(p.per)}`, value: Number.isFinite(baseline) ? baseline : null },
@@ -101,7 +105,7 @@ export const poissonRegression: Method<PoissonParams, RegressionResult> = {
 
     if (p.family === 'poisson' && dispersion !== null && dispersion > DISPERSION_LIMIT) {
       warnings.push(
-        `Pearson dispersion ${dispersion.toFixed(2)} exceeds 1.5: counts vary more than Poisson allows, so these intervals are too narrow. Try family negative_binomial.`,
+        `Pearson dispersion ${dispersion.toFixed(2)} exceeds ${DISPERSION_LIMIT}: counts vary more than Poisson allows, so these intervals are too narrow. Try family negative_binomial.`,
       )
     }
     if (df === 0) warnings.push('No residual degrees of freedom: the model is saturated, so overdispersion cannot be checked.')

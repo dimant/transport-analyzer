@@ -1,9 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { fitGlm } from './glm'
 import type { ForestSpec, TableSpec } from './method'
 import { poissonRegression, type PoissonParams } from './poisson-regression'
 import type { RegressionResult } from './regression'
 import { methodById, methods } from './registry'
 import { fromRows } from './table'
+
+// fitGlm passes through to the real fit unless a test overrides one call
+vi.mock('./glm', async (importOriginal) => {
+  const m = await importOriginal<typeof import('./glm')>()
+  return { ...m, fitGlm: vi.fn(m.fitGlm) }
+})
+const realGlm = () => vi.importActual<typeof import('./glm')>('./glm')
 
 const types = { numerator: 'count', denominator: 'exposure' } as const
 const mk = (cols: string[], rows: unknown[][]) => fromRows(cols, rows, types)
@@ -79,7 +87,12 @@ describe('poisson-regression', () => {
     )
     expectOneFactorA(r)
     expect(term(r, 'h', 'A')).toMatchObject({ estimate: null, lo: null, hi: null, p: null, note: 'aliased with other covariates' })
+    expect(term(r, 'h', 'B')).toMatchObject({ estimate: null, note: 'reference; term aliased with other covariates' })
+    expect(r.reference).toBe('g=B')
     expect(summary(r, 'parameters')).toBe(2)
+    const forest = poissonRegression.render(r)[1] as ForestSpec
+    expect(forest.caption).toBe('relative to g=B')
+    expect(forest.data.map((d) => d.label)).toEqual(['g: A', 'h: A'])
   })
 
   it('poisson_overdispersion_warns', () => {
@@ -158,6 +171,81 @@ describe('poisson-regression', () => {
     expect(poissonRegression.defaultBindings!(t)).toEqual({ events: 'numerator', exposure: 'denominator', covariates: ['rate_class', 'year'] })
     const noYear = fromRows(['rate_class', 'year', 'numerator'], [['x', 2019, 1]], { year: 'continuous', numerator: 'count' })
     expect(poissonRegression.defaultBindings!(noYear)).toEqual({ events: 'numerator', covariates: ['rate_class'] })
+  })
+
+  it('poisson_oneLevelLeft_referenceNotInModel', () => {
+    const r = poissonRegression.run(mk(['g', 'numerator', 'denominator'], [['A', 0, 1000], ['B', 30, 1500]]), bind(['g']), params)
+    expect(term(r, 'g', 'B')).toMatchObject({ estimate: null, note: 'reference; term not in the model' })
+    expect(r.reference).toBe('')
+  })
+
+  it('poisson_summaryFormats_perRow', () => {
+    const rows = Array.from({ length: 1234 }, (_, i) => [i % 2 ? 'A' : 'B', (i % 7) + 1, 100])
+    const r = poissonRegression.run(mk(['g', 'numerator', 'denominator'], rows), bind(['g']), params)
+    const cells = Object.fromEntries((poissonRegression.render(r)[2] as TableSpec).rows.map((row) => [row.label, row.value]))
+    expect(cells['rows used']).toBe('1,234')
+    expect(cells['parameters']).toBe('2')
+    expect(cells['residual df']).toBe('1,232')
+    expect(cells['converged']).toBe('yes')
+
+    const saturated = poissonRegression.run(mk(['g', 'numerator', 'denominator'], oneFactor), bind(['g']), params)
+    expect(summary(saturated, 'deviance')).toBe(0)
+    const sat = Object.fromEntries((poissonRegression.render(saturated)[2] as TableSpec).rows.map((row) => [row.label, row.value]))
+    expect(sat['deviance']).toBe('0')
+    expect(sat['Pearson dispersion']).toBe('—')
+    expect(sat['AIC']).toBe('13.4')
+  })
+
+  it('poisson_confidence90_narrowsInterval', () => {
+    const r = poissonRegression.run(mk(['g', 'numerator', 'denominator'], oneFactor), bind(['g']), { ...params, confidence: 0.9 })
+    const a = term(r, 'g', 'A')
+    const se = Math.sqrt(1 / 10 + 1 / 30)
+    expect(rel(a.lo, 0.5 * Math.exp(-1.6448536 * se))).toBeLessThan(1e-6)
+    expect(rel(a.hi, 0.5 * Math.exp(1.6448536 * se))).toBeLessThan(1e-6)
+    expect(a.lo!).toBeGreaterThan(0.24443036)
+    expect((poissonRegression.render(r)[1] as ForestSpec).xLabel).toBe('rate ratio (90% CI)')
+  })
+
+  it('poisson_invalidConfidence_warnsAndNullsIntervals', () => {
+    for (const confidence of [0, 1, 95]) {
+      const r = poissonRegression.run(mk(['g', 'numerator', 'denominator'], oneFactor), bind(['g']), { ...params, confidence })
+      expect(r.warnings).toContain('confidence must be between 0 and 1')
+      const a = term(r, 'g', 'A')
+      expect(rel(a.estimate, 0.5)).toBeLessThan(1e-6)
+      expect(a.lo).toBeNull()
+      expect(a.hi).toBeNull()
+    }
+  })
+
+  it('poisson_notConverged_warns', async () => {
+    const real = (await realGlm()).fitGlm
+    vi.mocked(fitGlm).mockImplementationOnce((...args) => ({ ...real(...args), converged: false }))
+    const r = poissonRegression.run(mk(['g', 'numerator', 'denominator'], oneFactor), bind(['g']), params)
+    expect(r.warnings).toContain('The fit did not converge in 50 iterations; estimates are unreliable.')
+    expect(summary(r, 'converged')).toBe('no')
+  })
+
+  it('poisson_nonFiniteEstimate_notAliased', async () => {
+    const real = (await realGlm()).fitGlm
+    vi.mocked(fitGlm).mockImplementationOnce((...args) => {
+      const fit = real(...args)
+      fit.beta[1] = NaN
+      fit.se[1] = NaN
+      return { ...fit, converged: false }
+    })
+    const r = poissonRegression.run(mk(['g', 'numerator', 'denominator'], oneFactor), bind(['g']), params)
+    expect(term(r, 'g', 'A')).toMatchObject({ estimate: null, lo: null, hi: null, p: null, note: 'not estimable: fit did not converge' })
+    expect(term(r, 'g', 'B').note).toBe('reference')
+  })
+
+  it('poisson_thetaCapped_warns', () => {
+    const t = mk(
+      ['g', 'h', 'numerator', 'denominator'],
+      [['a', 'x', 10, 100], ['a', 'y', 20, 100], ['b', 'x', 30, 100], ['b', 'y', 60, 100]],
+    )
+    const r = poissonRegression.run(t, bind(['g', 'h']), { ...params, family: 'negative_binomial' })
+    expect(r.warnings).toContain('No overdispersion found: negative binomial reduces to Poisson.')
+    expect(summary(r, 'family')).toBe('negative binomial (θ = 100000000)')
   })
 
   it('poisson_registered_afterHeatmap', () => {
