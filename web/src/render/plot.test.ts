@@ -101,5 +101,23 @@ describe('plot', () => {
     expect(el.querySelector('figcaption')!.textContent).toContain('relative to year=2019')
     const labels = [...el.querySelectorAll('[aria-label="y-axis tick label"] text')].map((t) => t.textContent)
     expect(labels).toEqual(['a', 'b'])
+    expect(el.textContent).toContain('no interval: b')
+    const titles = [...el.querySelectorAll('[aria-label="dot"] title')].map((t) => t.textContent)
+    expect(titles.some((t) => t!.startsWith('b:') && t!.includes('no interval'))).toBe(true)
+  })
+  it('forest_longLabel_widensMarginAndKeepsFullTitle', () => {
+    const long = 'vehicle_class: light_aircraft · general_aviation'
+    const spec: ForestSpec = {
+      kind: 'forest', label: 'term', estimate: 'est', lo: 'lo', hi: 'hi', xLabel: 'rate ratio',
+      data: [{ term: long, est: 1.5, lo: 1.1, hi: 2 }, { term: 'b', est: 0.7, lo: 0.5, hi: 0.9 }],
+    }
+    const el = renderPlot(spec, { width: 900 })
+    const ticks = [...el.querySelectorAll('[aria-label="y-axis tick label"] text')].map((t) => t.textContent)
+    expect(ticks[0]).toBe(long)
+    expect(el.querySelector('[aria-label="dot"] title')!.textContent).toContain(long)
+    const small = renderPlot(spec, { width: 300 })
+    const cut = small.querySelector('[aria-label="y-axis tick label"] text')!.textContent!
+    expect(cut.endsWith('…')).toBe(true)
+    expect(cut.length).toBeLessThan(long.length)
   })
 })

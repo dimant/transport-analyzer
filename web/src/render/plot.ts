@@ -120,25 +120,36 @@ function intervals(spec: IntervalSpec, width: number): Element {
 function forest(spec: ForestSpec, width: number): Element {
   const notes: string[] = []
   if (spec.caption) notes.push(spec.caption)
-  const rows = spec.data.filter((d) => {
+  const rows: Row[] = []
+  const skipped: Row[] = []
+  for (const d of spec.data) {
     const v = num(d[spec.estimate])
-    return v !== null && v > 0
-  })
-  const skipped = spec.data.filter((d) => !rows.includes(d))
+    ;(v !== null && v > 0 ? rows : skipped).push(d)
+  }
   if (skipped.length) notes.push(`not estimated: ${skipped.map((d) => label(d[spec.label])).join(', ')}`)
 
   const est = (d: Row) => num(d[spec.estimate])
-  const title = (d: Row) =>
-    `${label(d[spec.label])}: ${formatValue(est(d), 'rate')} (${formatValue(num(d[spec.lo]), 'rate')} – ${formatValue(num(d[spec.hi]), 'rate')})`
   const y = (d: Row) => label(d[spec.label])
   // an interval needs both ends; a row with only an estimate keeps its dot
-  const ruled = rows.filter((d) => (num(d[spec.lo]) ?? 0) > 0 && (num(d[spec.hi]) ?? 0) > 0)
+  const hasInterval = (d: Row) => (num(d[spec.lo]) ?? 0) > 0 && (num(d[spec.hi]) ?? 0) > 0
+  const ruled = rows.filter(hasInterval)
+  const unbounded = rows.filter((d) => !hasInterval(d))
+  if (unbounded.length) notes.push(`no interval: ${unbounded.map(y).join(', ')}`)
+  const title = (d: Row) =>
+    hasInterval(d)
+      ? `${y(d)}: ${formatValue(est(d), 'rate')} (${formatValue(num(d[spec.lo]), 'rate')} – ${formatValue(num(d[spec.hi]), 'rate')})`
+      : `${y(d)}: ${formatValue(est(d), 'rate')} (no interval)`
+  // room for the longest label, capped at half the plot; longer labels are cut with an ellipsis
+  const maxLen = Math.max(0, ...rows.map((d) => y(d).length))
+  const marginLeft = Math.max(120, Math.min(0.5 * width, 7 * maxLen + 16))
+  const fit = Math.max(1, Math.floor((marginLeft - 16) / 7))
+  const shorten = (t: string) => (t.length > fit ? `${t.slice(0, fit - 1)}…` : t)
 
   const plot = Plot.plot({
     width,
-    marginLeft: 120,
+    marginLeft,
     x: { type: 'log', label: spec.xLabel, grid: true, ticks: 6, tickFormat: (v: number) => formatValue(v, 'rate') },
-    y: { type: 'band', label: null, domain: spec.data.filter((d) => rows.includes(d)).map(y) },
+    y: { type: 'band', label: null, domain: rows.map(y), tickFormat: shorten },
     marks: [
       Plot.ruleX([1], { strokeDasharray: '4 3', stroke: 'gray' }),
       Plot.ruleY(ruled, { y, x1: (d: Row) => num(d[spec.lo]), x2: (d: Row) => num(d[spec.hi]), stroke: 'steelblue', title }),

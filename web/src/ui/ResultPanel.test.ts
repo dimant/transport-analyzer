@@ -30,5 +30,7 @@ describe('ResultPanel', () => {
     const m: Method = { ...method, render: () => [forest] }
     const { container } = render(ResultPanel, { run: { method: m, table, bindings: {}, params: {} } })
     expect(container.querySelector('figure')).not.toBeNull()
+    expect(container.querySelector('[stroke-dasharray]')).not.toBeNull()
+    expect(container.textContent).not.toContain('Could not draw plot')
   })
 })
