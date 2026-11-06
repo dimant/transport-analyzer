@@ -1,12 +1,13 @@
 import { crosstab } from './crosstab'
 import { heatmap } from './heatmap'
 import type { Method } from './method'
+import { logisticRegression } from './logistic-regression'
 import { poissonRegression } from './poisson-regression'
 import { rate } from './rate'
 
 // heterogeneous list: each method has its own params/result types
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const methods: Method<any, any>[] = [crosstab, rate, heatmap, poissonRegression]
+export const methods: Method<any, any>[] = [crosstab, rate, heatmap, poissonRegression, logisticRegression]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function methodById(id: string): Method<any, any> | undefined {
