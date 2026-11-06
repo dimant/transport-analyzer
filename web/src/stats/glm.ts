@@ -23,7 +23,8 @@ const MAX_HALVINGS = 10
 const LOGIT_ETA_MAX = 30
 const LOG_ETA_MAX = 700
 const THETA_CAP = 1e8
-const MAX_THETA_ROUNDS = 25
+const MAX_THETA_ROUNDS = 100
+const THETA_FLOOR = 1e-8
 const MAX_THETA_NEWTON = 50
 const THETA_TOL = 1e-8
 
@@ -121,8 +122,11 @@ function workingValues(family: Family, y: Float64Array, mu: Float64Array, eta: F
     // dμ/dη is μ for the log link and size·p(1−p) = Var for the logit link.
     const v = variance(family, mu[i], size[i])
     const dmu = family.kind === 'binomial' ? v : mu[i]
-    w[i] = v > 0 ? (dmu * dmu) / v : 0
-    z[i] = eta[i] - offset[i] + (dmu > 0 ? (y[i] - mu[i]) / dmu : 0)
+    const wi = v > 0 ? (dmu * dmu) / v : 0
+    // A row with a non-finite offset or no weight carries no information about β.
+    if (!Number.isFinite(offset[i]) || !(wi > 0) || !Number.isFinite(wi)) continue
+    w[i] = wi
+    z[i] = eta[i] - offset[i] + (y[i] - mu[i]) / dmu
   }
   return { w, z }
 }
@@ -173,6 +177,8 @@ export function fitGlm(X: Mat, y: Float64Array, offset: Float64Array, size: Floa
       muNext = etaNext.map((e, i) => linkInverse(family, e, size[i]))
       dev = deviance(family, y, muNext, size)
     }
+    // No finite deviance reachable: the fit failed. Keep the last valid β (none on iteration 1).
+    if (!Number.isFinite(dev)) break
     beta = next
     eta = etaNext
     mu = muNext
@@ -182,19 +188,21 @@ export function fitGlm(X: Mat, y: Float64Array, offset: Float64Array, size: Floa
   }
 
   const { w } = workingValues(family, y, mu, eta, offset, size)
-  const chol = cholesky(weightedCrossprod(Xk, w))
+  const info = weightedCrossprod(Xk, w)
+  const chol = cholesky(info)
   const inv = choleskyInverse(chol)
+  // Weighted aliasing only counts when the fit produced a usable XᵀWX.
+  const weightedValid = beta !== null && info.data.every(Number.isFinite)
   const k = keep.length
   const fullBeta = new Float64Array(p).fill(NaN)
   const se = new Float64Array(p).fill(NaN)
   const aliased = structural.slice()
   keep.forEach((j, idx) => {
-    if (chol.aliased[idx]) {
-      aliased[j] = true
-      return
+    if (weightedValid && chol.aliased[idx]) aliased[j] = true
+    else if (beta) {
+      fullBeta[j] = beta[idx]
+      se[j] = Math.sqrt(inv.data[idx * k + idx])
     }
-    fullBeta[j] = beta ? beta[idx] : NaN
-    se[j] = Math.sqrt(inv.data[idx * k + idx])
   })
 
   let pearson = 0
@@ -203,18 +211,36 @@ export function fitGlm(X: Mat, y: Float64Array, offset: Float64Array, size: Floa
     if (v > 0) pearson += (y[i] - mu[i]) ** 2 / v
   }
 
+  // When iteration 1 already failed there is no fitted μ to report.
+  const failed = beta === null
   return {
     beta: fullBeta,
     se,
     aliased,
-    mu,
-    deviance: devOld,
-    pearson,
-    logLik: logLikelihood(family, y, mu, size),
+    mu: failed ? new Float64Array(n).fill(NaN) : mu,
+    deviance: failed ? NaN : devOld,
+    pearson: failed ? NaN : pearson,
+    logLik: failed ? NaN : logLikelihood(family, y, mu, size),
     dfResidual: n - aliased.filter((a) => !a).length,
     iterations,
     converged,
   }
+}
+
+/**
+ * ψ(y+θ) − ψ(θ) and ψ'(y+θ) − ψ'(θ). For a small integer y these are the
+ * finite sums Σ 1/(θ+k) and −Σ 1/(θ+k)², which stay exact when θ is large.
+ */
+function gammaDifferences(y: number, theta: number): [number, number] {
+  if (!Number.isInteger(y) || y > 1000) return [digamma(y + theta) - digamma(theta), trigamma(y + theta) - trigamma(theta)]
+  let dg = 0
+  let tg = 0
+  for (let k = 0; k < y; k++) {
+    const inv = 1 / (theta + k)
+    dg += inv
+    tg -= inv * inv
+  }
+  return [dg, tg]
 }
 
 /** ML estimate of the NB2 θ given μ, by Newton steps on the score. */
@@ -223,13 +249,17 @@ function thetaMl(y: Float64Array, mu: Float64Array, theta: number): number {
     let score = 0
     let info = 0
     for (let i = 0; i < y.length; i++) {
+      const yi = y[i]
       const tm = theta + mu[i]
-      score += digamma(y[i] + theta) - digamma(theta) + Math.log(theta) + 1 - Math.log(tm) - (y[i] + theta) / tm
-      info += trigamma(y[i] + theta) - trigamma(theta) + 1 / theta - 2 / tm + (y[i] + theta) / (tm * tm)
+      const [dg, tg] = gammaDifferences(yi, theta)
+      // Written so the terms do not cancel at large θ, where the score is O(1/θ²).
+      score += dg - Math.log1p(mu[i] / theta) + (mu[i] - yi) / tm
+      info += tg + mu[i] / (theta * tm) + (yi - mu[i]) / (tm * tm)
     }
     // info is the score's derivative; Newton needs it negative (concave log-likelihood).
     let next = info < 0 ? theta - score / info : score > 0 ? theta * 2 : theta / 2
     if (!(next > 0)) next = theta / 2
+    next = Math.max(THETA_FLOOR, next)
     if (next >= THETA_CAP) return THETA_CAP
     const done = Math.abs(next - theta) / theta < THETA_TOL
     theta = next
@@ -248,8 +278,12 @@ export function fitNegativeBinomial(X: Mat, y: Float64Array, offset: Float64Arra
   const ones = new Float64Array(n).fill(1)
   const pois = fitGlm(X, y, offset, ones, { kind: 'poisson' })
   let ss = 0
-  for (let i = 0; i < n; i++) ss += (y[i] / pois.mu[i] - 1) ** 2
-  let theta = Math.min(THETA_CAP, n / ss)
+  for (let i = 0; i < n; i++) {
+    // A row with y = 0 and μ = 0 fits exactly; it adds nothing.
+    if (!(y[i] === 0 && pois.mu[i] === 0)) ss += (y[i] / pois.mu[i] - 1) ** 2
+  }
+  // ss = 0 is an exact Poisson fit (θ₀ = ∞, capped); a non-finite ss falls back to θ₀ = 1.
+  let theta = Number.isFinite(ss) ? Math.max(THETA_FLOOR, Math.min(THETA_CAP, n / ss)) : 1
   let mu = pois.mu
   let fit: GlmFit | null = null
   let thetaConverged = false
