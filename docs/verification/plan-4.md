@@ -15,7 +15,7 @@ the browser tables show. Intervals are 95% Wald intervals, `exp(β ± 1.96·se)`
 |---|---|---|---|
 | `docker compose up -d --build` | node build stage and API image build; stack starts | built and started | pass |
 | `curl -s localhost:8080/api/health` | `{"status":"ok"}` | `{"status":"ok"}` | pass |
-| `curl -s localhost:8080/` | the built `index.html` with the new presets | `/assets/index-D4C8VRbs.js`, which contains "Road: did an occupant die" and the new `p` help text | pass |
+| `curl -s localhost:8080/` | the built `index.html` with the new presets | `/assets/index-DuJU-bg_.js` (rebuilt after the controller's rulings below), which contains the new presets | pass |
 
 ## Step 2: Live preset test
 
@@ -23,7 +23,7 @@ the browser tables show. Intervals are 95% Wald intervals, `exp(β ± 1.96·se)`
 (10 presets, the plan-3 preset 2 check, presets 7 and 8 refit under `poisson`, and the cross-check below). For each
 regression preset the test asserts at least one estimated term, `converged: yes` in the summary and no
 `No rows left to fit.` warning. Without `TA_API` the file is skipped, so `npm test` stays green (24 files passed, 1
-skipped; 185 tests passed, 14 skipped). Presets 1–6 give the same numbers as in `plan-3.md`, with no warnings.
+skipped; 187 tests passed, 14 skipped). Presets 1–6 give the same numbers as in `plan-3.md`, with no warnings.
 
 ## Step 3: Numbers per preset
 
@@ -126,49 +126,61 @@ outcome `vehicles_with_occupant_fatality` out of `vehicles`, covariates `vehicle
 (The app shows the age ratio and its bounds as 1.06 at 3 significant digits; the 5-digit values are from the same fit.)
 
 Summary: 443 rows used; 8 parameters; deviance 1,789 on 435 residual df; Pearson dispersion 8.46; AIC 3,181; baseline
-probability 0.305 (a light truck of age 0); converged yes. **Warnings: "7 rows dropped: missing vehicle_age_years"**
+probability 0.305 (a light truck of age 0); converged yes. **Warnings:**
+- "7 rows dropped: missing vehicle_age_years"
+- "Pearson dispersion 8.46 exceeds 1.5: outcomes vary more between groups than the binomial allows, so these intervals
+  are too narrow."
+
 (450 rows returned; the 7 are the null-age group of each of the 7 classes, 9,625 vehicles in all. They include 6,214
 of the 6,300 `unknown`-class vehicles, so that class rests on 86 vehicles here).
 
 Reading: FARS covers fatal crashes only, so these are odds that someone aboard died given the vehicle was in a fatal
 crash. Each year of vehicle age multiplies those odds by 1.056 (about 1.73 over 10 years). Pearson dispersion 8.46 says
-the straight-line age term and the class term do not explain the cell-to-cell variation; the logistic method does not warn
-about this, so the intervals here are narrower than the data support (see Concerns below).
+the straight-line age term and the class term do not explain the cell-to-cell variation, so the intervals here are
+narrower than the data support (by roughly √8.46 ≈ 2.9 on the log scale); the second warning says so. The estimates are
+not rescaled.
 
 ### Preset 10: Aviation accidents: did an occupant die? By regulation class and aircraft class
 
-`/api/events/aggregate?grain=vehicle&from=2019-01-01&to=2023-12-31&bucket=none&groupBy=regulation_class,vehicle_class&f.mode=aviation`,
-outcome `vehicles_with_occupant_fatality` out of `vehicles`, covariates `regulation_class` and `vehicle_class`.
+`/api/events/aggregate?grain=vehicle&from=2019-01-01&to=2023-12-31&bucket=none&groupBy=regulation_class,vehicle_class&f.mode=aviation&f.country=US`,
+outcome `vehicles_with_occupant_fatality` out of `vehicles`, covariates `regulation_class` and `vehicle_class`. US
+accidents only (6,234 aircraft; 8,118 without the country filter), to match the US-only exposure used elsewhere.
 
 **Reference: `regulation_class=part_91, vehicle_class=light_aircraft`.**
 
 | term | level | odds ratio | lo | hi | p | aircraft with a death | aircraft |
 |---|---|---|---|---|---|---|---|
-| regulation_class | other | 3.13 | 2.42 | 4.05 | 3.5e-18 | 488 | 1,689 |
-| regulation_class | part_121 | 0.343 | 0.0737 | 1.59 | 0.17 | 2 | 219 |
-| regulation_class | part_133 | 1.73 | 0.787 | 3.79 | 0.17 | 9 | 36 |
-| regulation_class | part_135 | 1.23 | 0.846 | 1.78 | 0.28 | 40 | 199 |
-| regulation_class | part_135_scheduled | 0.399 | 0.120 | 1.33 | 0.14 | 3 | 32 |
-| regulation_class | part_137 | 0.774 | 0.540 | 1.11 | 0.16 | 52 | 288 |
-| regulation_class | part_91 | 1 (reference) | | | | 962 | 5,464 |
-| regulation_class | unknown | 3.89 | 2.70 | 5.61 | 3.7e-13 | 70 | 191 |
-| vehicle_class | airliner | 0.124 | 0.0609 | 0.253 | 8.8e-9 | 11 | 347 |
-| vehicle_class | business_jet | 0.359 | 0.213 | 0.603 | 0.00011 | 18 | 174 |
-| vehicle_class | experimental | 1.52 | 1.27 | 1.81 | 6.0e-6 | 200 | 852 |
-| vehicle_class | helicopter | 0.991 | 0.788 | 1.25 | 0.94 | 212 | 867 |
-| vehicle_class | light_aircraft | 1 (reference) | | | | 667 | 4,019 |
-| vehicle_class | other | 1.39 | 0.976 | 1.97 | 0.068 | 43 | 194 |
-| vehicle_class | turboprop | 2.05 | 1.53 | 2.74 | 1.4e-6 | 96 | 349 |
-| vehicle_class | unknown | 0.662 | 0.498 | 0.879 | 0.0044 | 379 | 1,316 |
+| regulation_class | other | 1.13 | 0.627 | 2.03 | 0.69 | 15 | 87 |
+| regulation_class | part_121 | 3.59 | 0.222 | 58.1 | 0.37 | 2 | 163 |
+| regulation_class | part_133 | 1.70 | 0.764 | 3.76 | 0.19 | 9 | 35 |
+| regulation_class | part_135 | 1.13 | 0.771 | 1.64 | 0.54 | 39 | 192 |
+| regulation_class | part_135_scheduled | 0.391 | 0.116 | 1.31 | 0.13 | 3 | 31 |
+| regulation_class | part_137 | 0.669 | 0.462 | 0.971 | 0.034 | 49 | 284 |
+| regulation_class | part_91 | 1 (reference) | | | | 948 | 5,435 |
+| regulation_class | unknown | — (not estimable: all or none had the outcome) | | | | 0 | 7 |
+| vehicle_class | airliner | 0.00901 | 0.000311 | 0.261 | 0.0061 | 1 | 171 |
+| vehicle_class | business_jet | 0.855 | 0.513 | 1.43 | 0.55 | 18 | 126 |
+| vehicle_class | experimental | 1.48 | 1.23 | 1.78 | 3.2e-5 | 182 | 830 |
+| vehicle_class | helicopter | 1.08 | 0.833 | 1.39 | 0.57 | 98 | 579 |
+| vehicle_class | light_aircraft | 1 (reference) | | | | 630 | 3,962 |
+| vehicle_class | other | 1.36 | 0.946 | 1.95 | 0.097 | 39 | 190 |
+| vehicle_class | turboprop | 2.34 | 1.74 | 3.14 | 1.5e-8 | 94 | 343 |
+| vehicle_class | unknown | 0.757 | 0.223 | 2.57 | 0.66 | 3 | 26 |
 
-Summary: 40 rows used; 15 parameters; deviance 60.96 on 25 residual df; Pearson dispersion 2.56; AIC 215.8; baseline
-probability 0.163 (a Part 91 light aircraft); converged yes. **Warnings: none.**
+Summary: 32 rows used; 14 parameters; deviance 19.08 on 18 residual df; Pearson dispersion 0.920; AIC 136.7; baseline
+probability 0.159 (a Part 91 light aircraft); converged yes. **Warnings: "regulation_class=unknown: all or none had the
+outcome; not estimable"** (expected: the 7 US aircraft of unknown regulation class had no occupant death, so the level and
+its rows are left out). No dispersion warning (0.92 ≤ 1.5).
 
-The query has no country filter, so it includes the NTSB's foreign accidents: 8,118 aircraft in all, 6,234 with
-`f.country=US`. The `other` and `unknown` regulation classes are almost all foreign (1,602 of 1,689 and 184 of 191
-aircraft); with `f.country=US` they hold 87 and 7 aircraft. Their high odds ratios (3.13, 3.89) most likely reflect which
-foreign accidents reach the NTSB database rather than a property of the regulation class. The US Part rows (91, 121, 133,
-135, 137) are the readable ones.
+Reading: Part 121 (163 aircraft) and the airliner class (171) largely overlap in US data, so the model
+can barely tell them apart, and the two ratios are wide and pull in opposite directions (part_121 3.59 [0.222, 58.1],
+airliner 0.00901 [0.000311, 0.261]). Read them together: an airliner under Part 121 against a Part 91 light aircraft is
+3.59 × 0.00901 ≈ 0.032. Turboprops (2.34) and experimental aircraft (1.48) have higher odds of a death per accident than
+light aircraft; Part 137 (agricultural) has lower odds (0.669) than Part 91.
+
+Without the country filter (the first run of this task) 8,118 aircraft entered, and the `other` and `unknown` regulation
+classes were almost all foreign (1,602 of 1,689 and 184 of 191), with odds ratios 3.13 and 3.89 and Pearson dispersion
+2.56. The controller ruled to filter to the US.
 
 ## Step 4: Cross-check (saturated one-factor model)
 
@@ -192,12 +204,9 @@ Pass. The part_121 pooled rate agrees with plan 3's preset 2 (0.000128).
 Done by the controller after this report (forest plot with the dashed rule at 1, tables without page-level horizontal
 scroll, warnings shown).
 
-## Concerns
+## Rulings applied after the first run
 
-1. **Logistic overdispersion is not flagged.** Preset 9 has Pearson dispersion 8.46 and preset 10 has 2.56, yet
-   `logistic-regression` shows the dispersion only in its summary, with no warning, so their Wald intervals are too
-   narrow by roughly √8.46 ≈ 2.9 and √2.56 ≈ 1.6. `poisson-regression` warns above 1.5. A matching warning (or a
-   quasi-binomial option) would be a small follow-up.
-2. **Preset 10 includes foreign accidents** (see its section). Adding `country: ['US']` to its filters, as preset 5 does,
-   would leave `other` and `unknown` nearly empty (`unknown` would have no deaths and be not estimable). The query was kept
-   as the plan specified; this needs a decision.
+1. Preset 10 is filtered to `country: ['US']` (numbers above), and its note says so.
+2. `logistic-regression` now warns when the Pearson dispersion exceeds 1.5 (the limit shared with `poisson-regression`).
+   Preset 9 shows the warning (8.46). Preset 10 does not (0.92). The intervals are not rescaled; a quasi-binomial or
+   scaled-SE option is a Later item in the carry-over.

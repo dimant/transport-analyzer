@@ -26,6 +26,8 @@ const FIT_FAILED = 'not estimable: fit did not converge'
 
 export const validConfidence = (c: number) => c > 0 && c < 1
 export const CONFIDENCE_WARNING = 'confidence must be between 0 and 1'
+// Pearson χ² / residual df above this is reported as overdispersion
+export const DISPERSION_LIMIT = 1.5
 
 /**
  * One term per design level, and one per continuous covariate, as exp(β) with a Wald interval.

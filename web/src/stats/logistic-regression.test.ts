@@ -40,6 +40,27 @@ describe('logistic-regression', () => {
     expect(rel(x.hi, 2.0027928)).toBeLessThan(1e-5)
   })
 
+  it('logistic_overdispersion_warns', () => {
+    const t = mk(['x', 'successes', 'n'], [0, 1, 2, 3, 4].map((x, i) => [x, [5, 40, 3, 45, 10][i], 50]))
+    const r = logisticRegression.run(t, bind(['x']), params)
+    const d = summary(r, 'Pearson dispersion') as number
+    expect(d).toBeGreaterThan(1.5)
+    expect(r.warnings).toEqual([
+      `Pearson dispersion ${d.toFixed(2)} exceeds 1.5: outcomes vary more between groups than the binomial allows, so these intervals are too narrow.`,
+    ])
+    // the warning reports; it neither switches the family nor rescales the intervals
+    const plain = logisticRegression.run(mk(['x', 'successes', 'n'], [0, 1, 2, 3, 4].map((x, i) => [x, [5, 8, 12, 15, 22][i], 50])), bind(['x']), params)
+    expect(summary(plain, 'Pearson dispersion') as number).toBeLessThanOrEqual(1.5)
+    expect(plain.warnings).toEqual([])
+  })
+
+  it('logistic_saturated_dispersionNull_noWarning', () => {
+    const r = logisticRegression.run(mk(['g', 'successes', 'n'], [['a', 1, 100], ['b', 60, 100]]), bind(['g']), params)
+    expect(summary(r, 'residual df')).toBe(0)
+    expect(summary(r, 'Pearson dispersion')).toBeNull()
+    expect(r.warnings).toEqual([])
+  })
+
   it('logistic_dropsUnusableRows', () => {
     const base = [['a', 20, 100], ['b', 10, 200]]
     const r = logisticRegression.run(

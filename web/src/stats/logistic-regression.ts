@@ -1,7 +1,7 @@
 import { buildDesign } from './design'
 import { fitGlm } from './glm'
 import type { Bindings, Method, RenderSpec } from './method'
-import { CONFIDENCE_WARNING, referenceOf, renderRegression, termsFromFit, validConfidence, type RegressionResult } from './regression'
+import { CONFIDENCE_WARNING, DISPERSION_LIMIT, referenceOf, renderRegression, termsFromFit, validConfidence, type RegressionResult } from './regression'
 import type { Table } from './table'
 
 export type LogisticParams = { confidence: number }
@@ -75,6 +75,11 @@ export const logisticRegression: Method<LogisticParams, RegressionResult> = {
     // the intercept is exempt: an uncentered covariate such as year pushes it far out on a sound fit
     const unstable = fit.beta.some((beta, j) => j > 0 && !fit.aliased[j] && Math.abs(beta) > SEPARATION_BETA)
     if (!fit.converged || unstable) warnings.push(SEPARATION_WARNING)
+    if (dispersion !== null && dispersion > DISPERSION_LIMIT) {
+      warnings.push(
+        `Pearson dispersion ${dispersion.toFixed(2)} exceeds ${DISPERSION_LIMIT}: outcomes vary more between groups than the binomial allows, so these intervals are too narrow.`,
+      )
+    }
     return result
   },
   render(r: RegressionResult): RenderSpec[] {

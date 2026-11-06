@@ -27,10 +27,7 @@ Done in plan 4 (see `docs/verification/plan-4.md`):
 - **Part 121 beside road vehicle classes.** `/api/rates` grouped by `vehicle_class,regulation_class` falls back to a classless regulation-class key such as `(null, part_121)`, guarded against splitting a regulation class (Task 1).
 - **Logistic outcome from full counts.** The vehicle-grain measure `vehicles_with_occupant_fatality`, and a `rate_class` column on every rates table (Task 2).
 - **`poisson-regression`** (rate ratios with an exposure offset, Poisson or negative binomial, overdispersion warning) and **`logistic-regression`** (odds ratios, separation warning), with a forest plot. Four presets use them.
-
-Found in plan 4, for later:
-- **Logistic overdispersion is not flagged.** The road and aviation logistic presets have Pearson dispersion 8.46 and 2.56; `logistic-regression` only shows it in the summary. Add a warning like Poisson's, or a quasi-binomial option.
-- **Aviation logistic preset includes foreign accidents.** Its `other` and `unknown` regulation classes are almost all non-US NTSB records. Decide whether to filter `country: ['US']`.
+- **Logistic overdispersion** is reported: a `Pearson dispersion` summary row, and a warning above 1.5 (the road logistic preset shows 8.46). The aviation logistic preset is filtered to US accidents, to match the US-only exposure.
 
 ## User review pending (accepted 2026-11-05)
 
@@ -62,4 +59,5 @@ Plan 2 closed these plan-1 items: the empty-FARS-year guard, mixed granularity i
 - **Remaining mixed-granularity gap.** Plan 4 (Task 1) covers the classless regulation-class fallback: under a vehicle-class grouping, a cell matched to `(null, X)` is kept only if every cell of that mode and year whose regulation class is `X` or has parent `X` matched `(null, X)` too; otherwise they are all unmatched as `mixed_granularity`. Still not covered: the parent guard only recognises a child that was matched exactly, so a key reached by dropping the regulation class to null (`(vc, null)` or `(pv, null)`) beside a sibling matched to `(vc, rc)` is not caught, and nothing checks the classless fallback when only `regulation_class` is grouped. No current data can trigger this; it becomes reachable only if highway exposure gains regulation-class rows.
 - **Memory after NTSB ingest.** The app holds about 694 MiB after an NTSB ingest, because CsvStager buffers each whole table and the GC then keeps the heap. Fix by streaming the decode, or set `DOTNET_GCConserveMemory`.
 - **NTSB Enterprise API.** The MDB download moves to the NTSB Enterprise API on 2027-04-05. Swap the adapter behind `IMdbExporter` and `NtsbAdapter.FetchAsync` before then.
+- **Quasi-binomial or scaled SEs for logistic regression.** `logistic-regression` warns when Pearson dispersion exceeds 1.5 but leaves the Wald intervals unscaled. Add a quasi-binomial option (scale SEs by √dispersion) so overdispersed fits, such as the road logistic preset (8.46), get honest intervals.
 - **Temp-directory sweep.** The startup sweep of `ta-ntsb-*` temp directories assumes a single app instance per host.

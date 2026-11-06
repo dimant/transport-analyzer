@@ -2,13 +2,12 @@ import { buildDesign } from './design'
 import { fitGlm, fitNegativeBinomial, type GlmFit } from './glm'
 import type { Bindings, Method, RenderSpec } from './method'
 import { formatPer } from './rate'
-import { CONFIDENCE_WARNING, referenceOf, renderRegression, termsFromFit, validConfidence, type RegressionResult } from './regression'
+import { CONFIDENCE_WARNING, DISPERSION_LIMIT, referenceOf, renderRegression, termsFromFit, validConfidence, type RegressionResult } from './regression'
 import { categoryLabel, column, naturalCompare, type Table } from './table'
 
 export type PoissonParams = { family: 'poisson' | 'negative_binomial'; confidence: number; per: number }
 
 const asList = (v: string | string[] | undefined): string[] => (v === undefined || v === '' ? [] : Array.isArray(v) ? v : [v])
-const DISPERSION_LIMIT = 1.5
 // a saturated fit leaves rounding noise in the deviance
 const DEVIANCE_ZERO = 1e-9
 

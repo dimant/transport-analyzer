@@ -111,9 +111,9 @@ export const PRESETS: Experiment[] = [
     'Aviation accidents: did an occupant die? By regulation class and aircraft class',
     {
       endpoint: 'aggregate', from: '2019-01-01', to: '2023-12-31', grain: 'vehicle', bucket: 'none', groupBy: ['regulation_class', 'vehicle_class'],
-      filters: { mode: ['aviation'] },
+      filters: { mode: ['aviation'], country: ['US'] },
     },
     ['regulation_class', 'vehicle_class'],
-    'NTSB accidents only: the odds that someone aboard died, given the aircraft had an accident. Maintenance regime is derived from the FAR part, so it is left out (it would be aliased with regulation class).',
+    'NTSB accidents only: the odds that someone aboard died, given the aircraft had an accident. Maintenance regime is derived from the FAR part, so it is left out (it would be aliased with regulation class). US accidents only, to match the US-only exposure used elsewhere.',
   ),
 ]
