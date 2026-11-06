@@ -20,7 +20,7 @@ describe.skipIf(!api)('presets against the live API', () => {
     const specs = method.render(result)
     expect(specs.length).toBeGreaterThan(0)
     for (const s of specs) {
-      expect(s.kind === 'heatmap' || s.kind === 'intervals' ? s.data.length : s.rows.length).toBeGreaterThan(0)
+      expect(s.kind !== 'table' ? s.data.length : s.rows.length).toBeGreaterThan(0)
     }
     if (p.methodId === 'rate') {
       const r = result as RateResult

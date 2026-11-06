@@ -36,7 +36,14 @@ export interface IntervalSpec {
   logScale: boolean
   data: Record<string, Cell>[]
 }
-export type RenderSpec = TableSpec | HeatmapSpec | IntervalSpec
+export interface ForestSpec {
+  kind: 'forest'
+  label: string; estimate: string; lo: string; hi: string // data keys
+  xLabel: string
+  caption?: string
+  data: Record<string, Cell>[]
+}
+export type RenderSpec = TableSpec | HeatmapSpec | IntervalSpec | ForestSpec
 
 export interface Method<P extends Record<string, unknown> = Record<string, unknown>, R = unknown> {
   id: string

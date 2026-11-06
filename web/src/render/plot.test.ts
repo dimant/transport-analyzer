@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import type { HeatmapSpec, IntervalSpec } from '../stats/method'
+import type { ForestSpec, HeatmapSpec, IntervalSpec } from '../stats/method'
 import { renderPlot } from './plot'
 
 const heat: HeatmapSpec = {
@@ -83,5 +83,23 @@ describe('plot', () => {
   it('heatmap_captionShownInFigcaption', () => {
     const el = renderPlot({ ...heat, caption: 'Exposure: faa-ga-survey · Provenance: survey_estimate' }, { width: 400 })
     expect(el.querySelector('figcaption')!.textContent).toContain('Exposure: faa-ga-survey · Provenance: survey_estimate')
+  })
+  it('forest_drawsEstimableRowsAndReferenceRule', () => {
+    const spec: ForestSpec = {
+      kind: 'forest', label: 'term', estimate: 'est', lo: 'lo', hi: 'hi', xLabel: 'rate ratio (95% CI)',
+      caption: 'relative to year=2019',
+      data: [
+        { term: 'a', est: 1.5, lo: 1.1, hi: 2.0 },
+        { term: 'b', est: 0.7, lo: null, hi: null },
+        { term: 'c', est: null, lo: null, hi: null },
+      ],
+    }
+    const el = renderPlot(spec, { width: 400 })
+    expect(el.querySelectorAll('[aria-label="dot"] circle').length).toBe(2)
+    expect(el.querySelectorAll('[stroke-dasharray]').length).toBe(1)
+    expect(el.textContent).toContain('not estimated: c')
+    expect(el.querySelector('figcaption')!.textContent).toContain('relative to year=2019')
+    const labels = [...el.querySelectorAll('[aria-label="y-axis tick label"] text')].map((t) => t.textContent)
+    expect(labels).toEqual(['a', 'b'])
   })
 })

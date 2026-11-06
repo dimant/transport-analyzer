@@ -1,5 +1,5 @@
 import * as Plot from '@observablehq/plot'
-import type { Cell, HeatmapSpec, IntervalSpec } from '../stats/method'
+import type { Cell, ForestSpec, HeatmapSpec, IntervalSpec } from '../stats/method'
 import { formatValue } from './format'
 
 type Row = Record<string, Cell>
@@ -18,8 +18,9 @@ function wrap(plot: Element | SVGSVGElement | HTMLElement, notes: string[]): Ele
   return fig
 }
 
-export function renderPlot(spec: HeatmapSpec | IntervalSpec, opts: { width: number }): Element {
-  return spec.kind === 'heatmap' ? heatmap(spec, opts.width) : intervals(spec, opts.width)
+export function renderPlot(spec: HeatmapSpec | IntervalSpec | ForestSpec, opts: { width: number }): Element {
+  if (spec.kind === 'heatmap') return heatmap(spec, opts.width)
+  return spec.kind === 'forest' ? forest(spec, opts.width) : intervals(spec, opts.width)
 }
 
 function heatmap(spec: HeatmapSpec, width: number): Element {
@@ -111,6 +112,37 @@ function intervals(spec: IntervalSpec, width: number): Element {
       Plot.ruleX(rows, { x, y1: (d: Row) => clamp(num(d[spec.lo])), y2: (d: Row) => clamp(num(d[spec.hi])), stroke: color, title }),
       Plot.dot(solid, { x, y, fill: color, stroke: color, title }),
       Plot.dot(hollow, { x, y, fill: 'none', stroke: color, title }),
+    ],
+  })
+  return wrap(plot, notes)
+}
+
+function forest(spec: ForestSpec, width: number): Element {
+  const notes: string[] = []
+  if (spec.caption) notes.push(spec.caption)
+  const rows = spec.data.filter((d) => {
+    const v = num(d[spec.estimate])
+    return v !== null && v > 0
+  })
+  const skipped = spec.data.filter((d) => !rows.includes(d))
+  if (skipped.length) notes.push(`not estimated: ${skipped.map((d) => label(d[spec.label])).join(', ')}`)
+
+  const est = (d: Row) => num(d[spec.estimate])
+  const title = (d: Row) =>
+    `${label(d[spec.label])}: ${formatValue(est(d), 'rate')} (${formatValue(num(d[spec.lo]), 'rate')} – ${formatValue(num(d[spec.hi]), 'rate')})`
+  const y = (d: Row) => label(d[spec.label])
+  // an interval needs both ends; a row with only an estimate keeps its dot
+  const ruled = rows.filter((d) => (num(d[spec.lo]) ?? 0) > 0 && (num(d[spec.hi]) ?? 0) > 0)
+
+  const plot = Plot.plot({
+    width,
+    marginLeft: 120,
+    x: { type: 'log', label: spec.xLabel, grid: true, ticks: 6, tickFormat: (v: number) => formatValue(v, 'rate') },
+    y: { type: 'band', label: null, domain: spec.data.filter((d) => rows.includes(d)).map(y) },
+    marks: [
+      Plot.ruleX([1], { strokeDasharray: '4 3', stroke: 'gray' }),
+      Plot.ruleY(ruled, { y, x1: (d: Row) => num(d[spec.lo]), x2: (d: Row) => num(d[spec.hi]), stroke: 'steelblue', title }),
+      Plot.dot(rows, { x: est, y, fill: 'steelblue', stroke: 'steelblue', title }),
     ],
   })
   return wrap(plot, notes)

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Glossary } from '../api/glossary'
   import { renderPlot } from '../render/plot'
-  import type { Bindings, HeatmapSpec, IntervalSpec, Method, RenderSpec } from '../stats/method'
+  import type { Bindings, ForestSpec, HeatmapSpec, IntervalSpec, Method, RenderSpec } from '../stats/method'
   import type { Table } from '../stats/table'
   import TableView from './TableView.svelte'
 
@@ -27,7 +27,7 @@
     }
   })
 
-  function plot(node: HTMLElement, spec: HeatmapSpec | IntervalSpec) {
+  function plot(node: HTMLElement, spec: HeatmapSpec | IntervalSpec | ForestSpec) {
     let current = spec
     let observer: ResizeObserver | undefined
     let lastWidth = 0
@@ -47,7 +47,7 @@
       observer.observe(node)
     }
     return {
-      update(next: HeatmapSpec | IntervalSpec) {
+      update(next: HeatmapSpec | IntervalSpec | ForestSpec) {
         current = next
         draw()
       },
