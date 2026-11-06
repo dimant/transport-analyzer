@@ -12,6 +12,7 @@ export interface Design {
   rows: number[]
   columns: DesignColumn[]
   levels: LevelInfo[]
+  sizeKind: DesignSpec['sizeKind']
   warnings: string[]
 }
 
@@ -148,5 +149,5 @@ export function buildDesign(table: Table, spec: DesignSpec): Design {
     out.size[r] = size[i]
     out.offset[r] = spec.sizeKind === 'exposure' ? Math.log(size[i]) : 0
   })
-  return { X, ...out, rows, columns, levels, warnings }
+  return { X, ...out, rows, columns, levels, sizeKind: spec.sizeKind, warnings }
 }
