@@ -42,6 +42,10 @@ export const COLUMN_HELP: Record<string, string> = {
   provenance: 'How the denominator was obtained, for example measured or a survey estimate.',
   period: 'The time bucket the row covers (year, quarter or month, by the chosen bucket).',
   rate: 'Numerator divided by denominator, scaled to the stated unit; the denominator is treated as fixed.',
-  lo: 'Lower bound of the exact (Garwood) Poisson confidence interval for the rate.',
-  hi: 'Upper bound of the exact (Garwood) Poisson confidence interval for the rate.',
+  lo: 'Lower bound of the confidence interval: exact (Garwood) Poisson for a rate, Wald for a rate ratio or odds ratio.',
+  hi: 'Upper bound of the confidence interval: exact (Garwood) Poisson for a rate, Wald for a rate ratio or odds ratio.',
+  estimate:
+    'The rate ratio or odds ratio for this level against the reference level, with the other covariates held fixed; for a numeric covariate, the ratio per unit. 1 means no difference.',
+  p: 'Two-sided Wald p-value for the ratio being 1.',
+  note: 'Why a row has no estimate: reference marks the level the others are compared with; not estimable means the level had no events (or all or none had the outcome); aliased means its column duplicates other covariates, so the data cannot separate them.',
 }

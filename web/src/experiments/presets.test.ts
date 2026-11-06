@@ -24,9 +24,9 @@ const tableFor = (q: Experiment['query']): Table => {
 }
 
 describe('PRESETS', () => {
-  it('has the six presets with unique names', () => {
-    expect(PRESETS).toHaveLength(6)
-    expect(new Set(PRESETS.map((p) => p.name)).size).toBe(6)
+  it('has the ten presets with unique names', () => {
+    expect(PRESETS).toHaveLength(10)
+    expect(new Set(PRESETS.map((p) => p.name)).size).toBe(10)
   })
 
   it.each(PRESETS.map((p) => [p.name, p] as const))('presets_bindToColumnsTheirQueryReturns: %s', (_name, p) => {
@@ -38,5 +38,12 @@ describe('PRESETS', () => {
 
   it('rate presets carry exposure source and provenance', () => {
     for (const p of PRESETS.slice(0, 4)) expect(p.bindings.carry).toEqual(['join_level', 'exposure_source', 'provenance'])
+  })
+
+  it('regression presets use negative_binomial for Poisson', () => {
+    const poisson = PRESETS.filter((p) => p.methodId === 'poisson-regression')
+    expect(poisson).toHaveLength(2)
+    for (const p of poisson) expect(p.params.family).toBe('negative_binomial')
+    expect(PRESETS.filter((p) => p.methodId === 'logistic-regression')).toHaveLength(2)
   })
 })

@@ -204,11 +204,28 @@ The browser UI lives in `web/` (Vite + Svelte 5 + TypeScript).
 
 ### Experiments
 
-An experiment is a query, a method, its column bindings and its parameters. Six presets ship with the app (airlines vs road
-by year and combined, GA by aircraft class, road by vehicle class, an aviation heatmap, a road crosstab); load one from the
-experiment list. Your own experiments are saved in the browser's storage only (`localStorage`): they are not sent to the
-server and do not follow you to another browser. Export an experiment as JSON to keep or share it (there is no import yet). The server counts; the browser does the statistics (rates with exact Garwood intervals, crosstabs, heatmaps).
+An experiment is a query, a method, its column bindings and its parameters. Ten presets ship with the app; load one from
+the experiment list:
+- rates: airlines vs road by year and combined, GA by aircraft class, road by vehicle class;
+- an aviation heatmap and a road crosstab;
+- rate ratios (negative binomial): deaths per passenger-mile by vehicle class with airlines included, and GA by aircraft
+  class per flight hour, both adjusted for year;
+- odds ratios (logistic): did an occupant die, for road vehicles by class and vehicle age, and for aircraft by regulation
+  class and aircraft class.
+
+Your own experiments are saved in the browser's storage only (`localStorage`): they are not sent to the
+server and do not follow you to another browser. Export an experiment as JSON to keep or share it (there is no import yet). The server counts; the browser does the statistics (rates with exact Garwood intervals, crosstabs, heatmaps,
+Poisson / negative binomial and logistic regression).
 Every rate is shown with its interval, its exposure source and its provenance.
+
+Reading rate ratios and odds ratios: each ratio compares a level with its term's reference level (the one with the
+largest exposure or most vehicles, named under the forest plot), with the other covariates held fixed; a numeric
+covariate such as vehicle age gives the ratio per unit. 1 means no difference, and the interval (95% Wald by default)
+shows how far the data pin it down; an interval that crosses the dashed line at 1 does not separate the level from the
+reference. A level shown as "not estimable" had no events (or, for odds, all or none had the outcome) and was left out of
+the fit; "aliased" means its column is a combination of other covariates, so the data cannot tell them apart. FARS covers
+fatal crashes only, so road odds ratios are odds that someone aboard died given the vehicle was in a fatal crash, not
+the risk of dying in any crash.
 
 ### Adding a method
 
