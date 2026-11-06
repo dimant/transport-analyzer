@@ -42,8 +42,8 @@ describe('design', () => {
     const d = buildDesign(t, { response: 'events', size: 'size', sizeKind: 'exposure', covariates: ['g', 'age', 'age'] })
     expect(d.rows).toEqual([0, 1])
     expect(d.warnings).toEqual([
-      '4 rows dropped: missing or non-positive exposure',
-      '1 row dropped: negative count',
+      '3 rows dropped: missing or non-positive exposure',
+      '2 rows dropped: missing or negative count',
       '2 rows dropped: missing age',
     ])
     const tr = buildDesign(
@@ -88,10 +88,39 @@ describe('design', () => {
     const d = buildDesign(t, { response: 'events', size: 'size', sizeKind: 'trials', covariates: ['g', 'h'] })
     expect(d.warnings).toEqual([
       'g=C: all or none had the outcome; not estimable',
-      'h=y: no events; not estimable',
+      'h=y: all or none had the outcome; not estimable',
       'h has one level left; not in the model',
     ])
     expect(d.rows).toEqual([0, 1])
-    expect(d.levels.find((l) => l.term === 'h' && l.level === 'y')?.events).toBe(0)
+    expect(d.levels.find((l) => l.term === 'h' && l.level === 'y')?.events).toBe(5)
+  })
+
+  it('buildDesign_trialsZeroSuccesses_allOrNoneText', () => {
+    const t = tbl(['g', 'events', 'size'], [['A', 0, 24], ['B', 3, 10], ['C', 2, 30]])
+    const d = buildDesign(t, { response: 'events', size: 'size', sizeKind: 'trials', covariates: ['g'] })
+    expect(d.levels.find((l) => l.level === 'A')).toEqual({ term: 'g', level: 'A', events: 0, size: 24, status: 'not_estimable' })
+    expect(d.warnings).toEqual(['g=A: all or none had the outcome; not estimable'])
+  })
+
+  it('buildDesign_levelWithNoRowsLeft_listedNotEstimable', () => {
+    // h=y only appears on the g=C row, which is removed
+    const t = tbl(
+      ['g', 'h', 'events', 'size'],
+      [['A', 'x', 2, 10], ['B', 'x', 3, 10], ['C', 'y', 0, 5]],
+    )
+    const d = buildDesign(t, { response: 'events', size: 'size', sizeKind: 'exposure', covariates: ['g', 'h'] })
+    expect(d.levels.find((l) => l.term === 'h' && l.level === 'y')).toEqual({ term: 'h', level: 'y', events: 0, size: 5, status: 'not_estimable' })
+    expect(d.warnings).toContain('g=C: no events; not estimable')
+    expect(d.warnings).toContain('h=y: no rows left after other levels were removed; not estimable')
+  })
+
+  it('buildDesign_allUnusable_isEmptyDesign', () => {
+    const t = tbl(['g', 'events', 'size'], [['A', 1, 0], ['B', 1, NaN]])
+    const d = buildDesign(t, { response: 'events', size: 'size', sizeKind: 'exposure', covariates: ['g'] })
+    expect(d.rows).toEqual([])
+    expect(d.columns).toEqual([{ term: '(intercept)', level: null }])
+    expect(d.X.rows).toBe(0)
+    expect(d.warnings).toEqual(['2 rows dropped: missing or non-positive exposure'])
+    expect(() => buildDesign(tbl(['g', 'events', 'size'], []), { response: 'events', size: 'size', sizeKind: 'exposure', covariates: ['g'] })).not.toThrow()
   })
 })

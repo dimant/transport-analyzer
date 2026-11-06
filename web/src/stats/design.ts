@@ -32,19 +32,19 @@ export function buildDesign(table: Table, spec: DesignSpec): Design {
     return { name, c }
   })
 
-  // Drop unusable rows, one reason per row, in the order the warnings are listed.
+  // Drop unusable rows; each row is counted under the first reason that matches, in warning order.
   let rows: number[] = []
   let badSize = 0
   let badResponse = 0
   let overTrials = 0
   for (let i = 0; i < table.length; i++) {
-    if (Number.isNaN(y[i]) || Number.isNaN(size[i]) || size[i] <= 0) badSize++
-    else if (y[i] < 0) badResponse++
+    if (Number.isNaN(size[i]) || size[i] <= 0) badSize++
+    else if (Number.isNaN(y[i]) || y[i] < 0) badResponse++
     else if (spec.sizeKind === 'trials' && y[i] > size[i]) overTrials++
     else rows.push(i)
   }
   if (badSize) warnings.push(`${rowsWord(badSize)}: missing or non-positive ${spec.sizeKind}`)
-  if (badResponse) warnings.push(`${rowsWord(badResponse)}: negative ${spec.sizeKind === 'trials' ? 'successes' : 'count'}`)
+  if (badResponse) warnings.push(`${rowsWord(badResponse)}: missing or negative ${spec.sizeKind === 'trials' ? 'successes' : 'count'}`)
   if (overTrials) warnings.push(`${rowsWord(overTrials)}: successes above trials`)
   for (const { name, c } of covariates) {
     if (c.type === 'categorical') continue
@@ -76,6 +76,11 @@ export function buildDesign(table: Table, spec: DesignSpec): Design {
   for (const { name, c } of categorical) {
     universe.set(name, [...totals(c).keys()].sort(naturalCompare))
   }
+  // Totals over the usable rows, before any level is removed.
+  const first = new Map<string, { events: number; size: number }>()
+  for (const { name, c } of categorical) {
+    for (const [l, t] of totals(c)) first.set(key(name, l), t)
+  }
   for (let changed = true; changed; ) {
     changed = false
     for (const { name, c } of categorical) {
@@ -83,13 +88,13 @@ export function buildDesign(table: Table, spec: DesignSpec): Design {
       const drop: string[] = []
       for (const l of [...t.keys()].sort(naturalCompare)) {
         const { events, size: s } = t.get(l)!
-        if (events === 0) {
+        if (events === 0 && spec.sizeKind === 'exposure') {
           warnings.push(`${name}=${l}: no events; not estimable`)
-        } else if (spec.sizeKind === 'trials' && events === s) {
+        } else if (spec.sizeKind === 'trials' && (events === 0 || events === s)) {
           warnings.push(`${name}=${l}: all or none had the outcome; not estimable`)
         } else continue
         drop.push(l)
-        removed.set(key(name, l), { term: name, level: l, events, size: s, status: 'not_estimable' })
+        removed.set(key(name, l), { term: name, level: l, ...first.get(key(name, l))!, status: 'not_estimable' })
       }
       if (drop.length) {
         rows = rows.filter((i) => !drop.includes(label(c, i)))
@@ -115,13 +120,16 @@ export function buildDesign(table: Table, spec: DesignSpec): Design {
     for (const l of universe.get(name)!) {
       const gone = removed.get(key(name, l))
       if (gone) levels.push(gone)
-      else if (t.has(l)) {
+      else if (!t.has(l)) {
+        warnings.push(`${name}=${l}: no rows left after other levels were removed; not estimable`)
+        levels.push({ term: name, level: l, ...first.get(key(name, l))!, status: 'not_estimable' })
+      } else {
         const { events, size: s } = t.get(l)!
         levels.push({ term: name, level: l, events, size: s, status: l === ref ? 'reference' : 'estimated' })
       }
     }
     if (kept.length < 2) {
-      warnings.push(`${name} has one level left; not in the model`)
+      if (kept.length === 1) warnings.push(`${name} has one level left; not in the model`)
       continue
     }
     for (const l of kept) {
