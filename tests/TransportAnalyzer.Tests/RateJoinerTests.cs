@@ -197,6 +197,36 @@ public class RateJoinerTests
     }
 
     [Fact]
+    public void Join_GroupedByClass_ClasslessRegulationKeyBesideClassedParent_IsMixedGranularity()
+    {
+        // Every part_133 cell is unknown class and matched (null, part_133), but light_aircraft/part_91 matched
+        // (light_aircraft, general_aviation), whose hours include part_133.
+        var result = RateJoiner.Join([Air("light_aircraft", "part_91", 10), Air("unknown", "part_133", 2)],
+            [AirExp("light_aircraft", "general_aviation", 1000), AirExp(null, "part_133", 90)], Parents, RegParents, true, true);
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(AirKey("light_aircraft", "general_aviation"), row.Key);
+        Assert.Equal(10, row.Numerator);
+        var unmatched = Assert.Single(result.Unmatched);
+        Assert.Equal(AirKey("unknown", "part_133"), unmatched.Key);
+        Assert.Equal(2, unmatched.Value);
+        Assert.Equal("mixed_granularity", unmatched.Reason);
+    }
+
+    [Fact]
+    public void Join_GroupedByClass_ClasslessRegulationParentKey_CompleteRollUpIsKept()
+    {
+        var result = RateJoiner.Join([Air("unknown", "part_91", 3), Air("unknown", "part_133", 1)],
+            [AirExp(null, "general_aviation", 1000)], Parents, RegParents, true, true);
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(AirKey(null, "general_aviation"), row.Key);
+        Assert.Equal(4, row.Numerator);
+        Assert.Equal("regulation_class_parent", row.JoinLevel);
+        Assert.Empty(result.Unmatched);
+    }
+
+    [Fact]
     public void Join_Part135Scheduled_HasNoParent()
     {
         var result = RateJoiner.Join([Air("turboprop", "part_135_scheduled", 1)],
@@ -305,6 +335,8 @@ public class RateJoinerTests
             [AirExp(null, "part_121", 5000), Exp("bus", 80)], true, true),
         ["classless_reg_mixed"] = ([Air("light_aircraft", "part_91", 10), Air("unknown", "part_91", 2)],
             [AirExp("light_aircraft", "general_aviation", 1000), AirExp(null, "part_91", 900)], true, true),
+        ["classless_reg_parent_overlap"] = ([Air("light_aircraft", "part_91", 10), Air("unknown", "part_133", 2)],
+            [AirExp("light_aircraft", "general_aviation", 1000), AirExp(null, "part_133", 90)], true, true),
         ["vc_mixed"] = ([Num("passenger_car", 2), Num("light_truck", 3), Num("light_duty", 1)],
             [Exp("passenger_car", 50), Exp("light_duty", 100)], true, false),
         ["combined"] = ([Num("passenger_car", 2), Num("light_truck", 3), Num("motorcycle", 7, "part_a"),

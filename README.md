@@ -173,7 +173,10 @@ Numerators with no usable exposure are listed in `unmatched` with a `reason`:
   exactly, so the parent's exposure would be counted beside part of itself; all cells matched to that parent are
   listed here instead. Also used when, grouped by vehicle class, a cell matched a classless regulation-class row
   (such as Part 121 passenger miles) but not every cell of that regulation class did: e.g. unknown-class Part 91
-  aircraft would otherwise be divided by all Part 91 hours while light aircraft use general-aviation hours.
+  aircraft would otherwise be divided by all Part 91 hours while light aircraft use general-aviation hours. The same
+  applies when such a classless row sits beside a classed row of the same regulation class, its parent or a child: e.g.
+  unknown-class Part 133 aircraft against Part 133 hours while light aircraft use general-aviation hours, which include
+  Part 133.
 
 Casualties not attributed to any vehicle are in `unattributed`. Rates count **US events only** (`"scope": {"country": "US"}` in the response), because the BTS and FAA
 exposure is national; `/api/events/aggregate` and `/api/events/sample` are not restricted.
@@ -189,7 +192,7 @@ Part 135, Part 137 and Part 133 together). With `groupBy=vehicle_class` alone, n
 and every aviation class ends up in `unmatched`. With `groupBy=regulation_class`, `flight_hours` gives one row per Part
 (`part_91`, `part_135`, `part_137`, `part_133`); Part 121 and scheduled Part 135 have no flight hours. Part 121
 against road travel works with either grouping: `metric=passenger_miles&groupBy=vehicle_class,regulation_class` returns
-Part 121 (one row, no vehicle class) beside the road vehicle classes, and `groupBy=regulation_class` returns it beside
+Part 121 (one row per year, no vehicle class) beside the road vehicle classes, and `groupBy=regulation_class` returns it beside
 the road total.
 
 ## Frontend

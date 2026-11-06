@@ -25,7 +25,8 @@ public static class RateJoiner
     /// match are unmatched with <see cref="NoExposure"/>; parent roll-ups that would sit beside an exactly matched child
     /// of the same parent are unmatched with <see cref="MixedGranularity"/>, and so are the cells matched to a classless
     /// regulation-class key <c>(null, X)</c> unless every numerator cell of that mode and year whose regulation class is
-    /// <c>X</c> or has parent <c>X</c> matched it too.
+    /// <c>X</c> or has parent <c>X</c> matched it too, and no other matched key of that mode and year has a vehicle class
+    /// and a regulation class that is <c>X</c>, <c>X</c>'s parent or a child of <c>X</c>.
     /// </summary>
     /// <exception cref="ArgumentException">Two usable exposure cells share a key.</exception>
     public static RateResult Join(IEnumerable<NumeratorCell> numerators, IEnumerable<ExposureCell> exposure,
@@ -72,7 +73,9 @@ public static class RateJoiner
         // A classless regulation key reached under a vehicle-class grouping is a roll-up over vehicle class. It is valid
         // only if all of that regulation class's cells roll up with it; otherwise its hours would be divided among a
         // subset of the class (e.g. unknown-class Part 91 aircraft against all Part 91 hours, light aircraft against
-        // general-aviation hours).
+        // general-aviation hours). It is also invalid beside a classed key whose regulation class is the same, its parent
+        // or its child, whose hours overlap it (e.g. unknown-class Part 133 against Part 133 hours while light aircraft
+        // use general-aviation hours, which include Part 133).
         if (byVehicleClass)
         {
             var allCells = matches.Select(m => (m.Cell.Key, Matched: (RateKey?)m.Key))
@@ -83,7 +86,11 @@ public static class RateJoiner
                     .Where(c => c.Key.Mode == x.Mode && c.Key.Year == x.Year && c.Key.RegulationClass is { } crc
                         && (crc == x.RegulationClass || regulationClassParent.GetValueOrDefault(crc) == x.RegulationClass))
                     .All(c => c.Matched == x);
-                if (!complete) mixed.Add(x);
+                var overlapsClassed = matches.Any(m => m.Key.Mode == x.Mode && m.Key.Year == x.Year
+                    && m.Key.VehicleClass is not null && m.Key.RegulationClass is { } mrc
+                    && (mrc == x.RegulationClass || mrc == regulationClassParent.GetValueOrDefault(x.RegulationClass!)
+                        || regulationClassParent.GetValueOrDefault(mrc) == x.RegulationClass));
+                if (!complete || overlapsClassed) mixed.Add(x);
             }
         }
         unmatched.AddRange(matches.Where(m => mixed.Contains(m.Key))
