@@ -4,7 +4,7 @@ import type { RegressionResult } from './regression'
 import { methodById, methods } from './registry'
 import { fromRows } from './table'
 
-const types = { successes: 'count', n: 'count', x: 'continuous' } as const
+const types = { successes: 'count', n: 'count', x: 'continuous', z: 'continuous' } as const
 const mk = (cols: string[], rows: unknown[][]) => fromRows(cols, rows, types)
 const params: LogisticParams = { confidence: 0.95 }
 const bind = (covariates: string[]) => ({ outcome: 'successes', trials: 'n', covariates })
@@ -60,6 +60,20 @@ describe('logistic-regression', () => {
       'Estimates are unstable (possible separation: a covariate predicts the outcome almost perfectly). Do not read these odds ratios.',
     ])
     expect(r.warnings).toHaveLength(1)
+  })
+
+  it('logistic_uncenteredCovariate_noFalseSeparation', () => {
+    const t = mk(['x', 'successes', 'n'], Array.from({ length: 11 }, (_, i) => [2010 + i, 20 + i, 100]))
+    const r = logisticRegression.run(t, bind(['x']), params)
+    expect(summary(r, 'converged')).toBe('yes')
+    expect(r.warnings).toEqual([])
+  })
+
+  it('logistic_aliasedColumn_ignoredBySeparationCheck', () => {
+    const t = mk(['x', 'z', 'successes', 'n'], Array.from({ length: 6 }, (_, i) => [i, i, 20 + 2 * i, 100]))
+    const r = logisticRegression.run(t, bind(['x', 'z']), params)
+    expect(r.warnings).toEqual([])
+    expect(term(r, 'z', 'per unit').note).toBe('aliased with other covariates')
   })
 
   it('logistic_categoricalAllOrNone_notEstimable', () => {

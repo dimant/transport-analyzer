@@ -72,7 +72,8 @@ export const logisticRegression: Method<LogisticParams, RegressionResult> = {
       { label: 'converged', value: fit.converged ? 'yes' : 'no' },
     ]
 
-    const unstable = fit.beta.some((beta, j) => !fit.aliased[j] && Math.abs(beta) > SEPARATION_BETA)
+    // the intercept is exempt: an uncentered covariate such as year pushes it far out on a sound fit
+    const unstable = fit.beta.some((beta, j) => j > 0 && !fit.aliased[j] && Math.abs(beta) > SEPARATION_BETA)
     if (!fit.converged || unstable) warnings.push(SEPARATION_WARNING)
     return result
   },
