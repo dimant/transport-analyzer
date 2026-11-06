@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { garwood, gammaQuantile, regularizedGammaP } from './distributions'
+import {
+  digamma,
+  garwood,
+  gammaQuantile,
+  normalQuantile,
+  normalTwoSidedP,
+  regularizedGammaP,
+  trigamma,
+} from './distributions'
 
 function close(actual: number, expected: number, rel = 1e-6) {
   expect(Math.abs(actual - expected)).toBeLessThanOrEqual(rel * Math.max(1, Math.abs(expected)))
@@ -69,5 +77,39 @@ describe('gamma', () => {
 
   it('regularizedGammaP_exponential', () => {
     for (const x of [0.1, 1, 10]) close(regularizedGammaP(1, x), 1 - Math.exp(-x), 1e-12)
+  })
+})
+
+describe('normal', () => {
+  it('normalQuantile matches scipy', () => {
+    close(normalQuantile(0.975), 1.959963984540054, 1e-12)
+    close(normalQuantile(0.995), 2.5758293035489004, 1e-12)
+    close(normalQuantile(1e-10), -6.361340902404056, 1e-9)
+  })
+
+  it('normalQuantile rejects p outside (0, 1)', () => {
+    expect(() => normalQuantile(0)).toThrow(RangeError)
+    expect(() => normalQuantile(1)).toThrow(RangeError)
+  })
+
+  it('normalTwoSidedP keeps tail precision', () => {
+    close(normalTwoSidedP(1.959963984540054), 0.05, 1e-12)
+    const expected = 1.5239706048320948e-23
+    expect(Math.abs(normalTwoSidedP(10) - expected) / expected).toBeLessThan(1e-6)
+    expect(normalTwoSidedP(0)).toBe(1)
+  })
+})
+
+describe('digamma and trigamma', () => {
+  it('digamma matches scipy', () => {
+    close(digamma(1), -0.5772156649015329, 1e-12)
+    close(digamma(0.5), -1.9635100260214235, 1e-12)
+    close(digamma(7.3), 1.917820335637986, 1e-12)
+  })
+
+  it('trigamma matches scipy', () => {
+    close(trigamma(1), 1.6449340668482266, 1e-10)
+    close(trigamma(0.5), 4.93480220054468, 1e-10)
+    close(trigamma(7.3), 0.14679576813142703, 1e-10)
   })
 })
